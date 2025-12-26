@@ -119,7 +119,10 @@ typedef struct {
     mfxU16       MaxAdaptiveGopSize;
     mfxU16       MinAdaptiveGopSize;
     mfxU32       codecTypeInEncodePass;
-    mfxU16       reserved[18];
+    mfxU16       FastPassEnable;
+    mfxU16       FastPassRatio;
+    mfxU64       LADataHDL;
+    mfxU16       reserved[12];
 } mfxExtLplaParam;
 
 #define MFX_EXTBUFF_LPLA_STATUS MFX_MAKEFOURCC('L', 'P', 'L', 'S')

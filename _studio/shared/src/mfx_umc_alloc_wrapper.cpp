@@ -771,7 +771,8 @@ mfxStatus mfx_UMC_FrameAllocator::SetCurrentMFXSurface(mfxFrameSurface1 *surf)
         || surf->Info.FourCC == MFX_FOURCC_Y210
         || surf->Info.FourCC == MFX_FOURCC_P016
         || surf->Info.FourCC == MFX_FOURCC_Y216
-        || surf->Info.FourCC == MFX_FOURCC_Y416)
+        || surf->Info.FourCC == MFX_FOURCC_Y416
+        )
     {
         if (m_isSWDecode)
         {
@@ -2252,6 +2253,7 @@ mfxStatus SurfaceSource::PrepareToOutput(mfxFrameSurface1 *surface_out, UMC::Fra
                 });
                 m_output_work_surface_skip_frames.erase(itSkipFrame);
             }
+            guard.Unlock();
 
             MFX_SAFE_CALL(m_core->DoFastCopyWrapper(surface_out,
                 // When this is user provided SW memory surface it might not have correct type set
@@ -2260,6 +2262,7 @@ mfxStatus SurfaceSource::PrepareToOutput(mfxFrameSurface1 *surface_out, UMC::Fra
                 srcSurface->Data.MemType,
                 gpuCopyMode
             ));
+            guard.Lock();
         }
 
         return MFX_ERR_NONE;

@@ -1,4 +1,4 @@
-// Copyright (c) 2022-2023 Intel Corporation
+// Copyright (c) 2022-2025 Intel Corporation
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -94,16 +94,21 @@ namespace UMC_VVC_DECODER
         par->mfx.FrameInfo.BitDepthChroma = (mfxU16)(pSps->sps_bitdepth_minus8 + 8);
         par->mfx.FrameInfo.Shift = 0;
 
-        par->mfx.FrameInfo.CropX = (mfxU16)(pPps->pps_conf_win_left_offset);
-        par->mfx.FrameInfo.CropY = (mfxU16)(pPps->pps_conf_win_top_offset);
-        par->mfx.FrameInfo.CropH = (mfxU16)(pPps->pps_pic_height_in_luma_samples - (pPps->pps_conf_win_top_offset + pPps->pps_conf_win_bottom_offset));
-        par->mfx.FrameInfo.CropW = (mfxU16)(pPps->pps_pic_width_in_luma_samples - (pPps->pps_conf_win_left_offset + pPps->pps_conf_win_right_offset));
+        int unitX = 1;
+        int unitY = 1;
+        if (getWinUnit(pSps->sps_chroma_format_idc, unitX, unitY) != UMC::UMC_OK)
+            return UMC::UMC_ERR_FAILED;
+
+        par->mfx.FrameInfo.CropX = (mfxU16)(pPps->pps_conf_win_left_offset * unitX);
+        par->mfx.FrameInfo.CropY = (mfxU16)(pPps->pps_conf_win_top_offset * unitY);
+        par->mfx.FrameInfo.CropH = (mfxU16)(pPps->pps_pic_height_in_luma_samples - (pPps->pps_conf_win_top_offset + pPps->pps_conf_win_bottom_offset) * unitY);
+        par->mfx.FrameInfo.CropW = (mfxU16)(pPps->pps_pic_width_in_luma_samples - (pPps->pps_conf_win_left_offset + pPps->pps_conf_win_right_offset) * unitX);
 
         par->mfx.FrameInfo.PicStruct = static_cast<mfxU16>(pSps->sps_field_seq_flag ? MFX_PICSTRUCT_FIELD_SINGLE : MFX_PICSTRUCT_PROGRESSIVE);
         par->mfx.FrameInfo.ChromaFormat = (mfxU16)(pSps->sps_chroma_format_idc);
 
-        par->mfx.FrameInfo.AspectRatioW = (mfxU16)(pPps->pps_pic_width_in_luma_samples);;
-        par->mfx.FrameInfo.AspectRatioH = (mfxU16)(pPps->pps_pic_height_in_luma_samples);
+        par->mfx.FrameInfo.AspectRatioW = 1; // There is a known gap in VVC VPL, which does not implement to parse VUI messages,so AspectRatioW and AspectRatioH are set 1 by default.
+        par->mfx.FrameInfo.AspectRatioH = 1;
 
         par->mfx.FrameInfo.FrameRateExtN = (mfxU32)(pSps->general_timing_hrd_parameters.time_scale);
         par->mfx.FrameInfo.FrameRateExtD = (mfxU32)(pSps->general_timing_hrd_parameters.num_units_in_tick);
@@ -122,10 +127,7 @@ namespace UMC_VVC_DECODER
             }
         }
 
-        if (pSps->profile_tier_level.general_profile_idc == (VVC_STILL_PICTURE | VVC_MAIN_10))
-            par->mfx.CodecProfile = MFX_PROFILE_VVC_MAIN10;
-        else
-            par->mfx.CodecProfile = (mfxU16)pSps->profile_tier_level.general_profile_idc;
+        par->mfx.CodecProfile = (mfxU16)pSps->profile_tier_level.general_profile_idc;
         par->mfx.CodecLevel = (mfxU16)pSps->profile_tier_level.general_level_idc;
         if (pSps->profile_tier_level.general_profile_idc == (VVC_STILL_PICTURE | VVC_MAIN_10))
         {
@@ -157,8 +159,14 @@ namespace UMC_VVC_DECODER
 
         par->mfx.FrameInfo.Width = (mfxU16)(pPps->pps_pic_width_in_luma_samples);
         par->mfx.FrameInfo.Height = (mfxU16)(pPps->pps_pic_height_in_luma_samples);
-        par->mfx.FrameInfo.CropH = (mfxU16)(pPps->pps_pic_height_in_luma_samples - (pPps->pps_conf_win_top_offset + pPps->pps_conf_win_bottom_offset));
-        par->mfx.FrameInfo.CropW = (mfxU16)(pPps->pps_pic_width_in_luma_samples - (pPps->pps_conf_win_left_offset + pPps->pps_conf_win_right_offset));
+
+        int unitX = 1;
+        int unitY = 1;
+        if (getWinUnit(pSps->sps_chroma_format_idc, unitX, unitY) != UMC::UMC_OK)
+            return UMC::UMC_ERR_FAILED;
+
+        par->mfx.FrameInfo.CropH = (mfxU16)(pPps->pps_pic_height_in_luma_samples - (pPps->pps_conf_win_top_offset + pPps->pps_conf_win_bottom_offset) * unitY);
+        par->mfx.FrameInfo.CropW = (mfxU16)(pPps->pps_pic_width_in_luma_samples - (pPps->pps_conf_win_left_offset + pPps->pps_conf_win_right_offset) * unitX);
 
         par->mfx.FrameInfo.BitDepthLuma = (mfxU16)(pSps->sps_bitdepth_minus8 + 8);
         par->mfx.FrameInfo.BitDepthChroma = (mfxU16)(pSps->sps_bitdepth_minus8 + 8);
@@ -187,6 +195,7 @@ namespace UMC_VVC_DECODER
         switch (profile)
         {
             case MFX_PROFILE_VVC_MAIN10:
+            case MFX_PROFILE_VVC_MAIN10_STILL_PICTURE:
                 return true;
             default:
                 return false;
@@ -287,7 +296,8 @@ namespace UMC_VVC_DECODER
             return false;
         }
 
-        if (in->mfx.CodecProfile != MFX_PROFILE_VVC_MAIN10)
+        if (in->mfx.CodecProfile != MFX_PROFILE_VVC_MAIN10 &&
+            in->mfx.CodecProfile != MFX_PROFILE_VVC_MAIN10_STILL_PICTURE)
         {
             return false;
         }
@@ -359,7 +369,7 @@ namespace UMC_VVC_DECODER
     inline
     bool CheckChromaFormat(mfxU16 profile, mfxU16 format)
     {
-        MFX_CHECK_WITH_ASSERT(profile == MFX_PROFILE_VVC_MAIN10, 0);
+        MFX_CHECK_WITH_ASSERT(profile == MFX_PROFILE_VVC_MAIN10 || profile == MFX_PROFILE_VVC_MAIN10_STILL_PICTURE, 0);
 
         if (format > MFX_CHROMAFORMAT_YUV444)
             return false;
@@ -370,7 +380,8 @@ namespace UMC_VVC_DECODER
             mfxI8  chroma[4];
         } static const supported[] =
         {
-            { MFX_PROFILE_VVC_MAIN10,   {                      -1, MFX_CHROMAFORMAT_YUV420, MFX_CHROMAFORMAT_YUV422, MFX_CHROMAFORMAT_YUV444 } },
+            { MFX_PROFILE_VVC_MAIN10,               { -1, MFX_CHROMAFORMAT_YUV420, MFX_CHROMAFORMAT_YUV422, MFX_CHROMAFORMAT_YUV444 } },
+            { MFX_PROFILE_VVC_MAIN10_STILL_PICTURE, { -1, MFX_CHROMAFORMAT_YUV420, MFX_CHROMAFORMAT_YUV422, MFX_CHROMAFORMAT_YUV444 } },
         };
 
         supported_t const
@@ -386,7 +397,7 @@ namespace UMC_VVC_DECODER
     inline
     bool CheckBitDepth(mfxU16 profile, mfxU16 bit_depth)
     {
-        MFX_CHECK_WITH_ASSERT(profile == MFX_PROFILE_VVC_MAIN10, 0);
+        MFX_CHECK_WITH_ASSERT(profile == MFX_PROFILE_VVC_MAIN10 || profile == MFX_PROFILE_VVC_MAIN10_STILL_PICTURE, 0);
 
         struct minmax_t
         {
@@ -394,7 +405,8 @@ namespace UMC_VVC_DECODER
             mfxU8  lo, hi;
         } static const minmax[] =
         {
-            { MFX_PROFILE_VVC_MAIN10,  8, 10 },
+            { MFX_PROFILE_VVC_MAIN10,                8, 10 },
+            { MFX_PROFILE_VVC_MAIN10_STILL_PICTURE,  8, 10 },
         };
 
         minmax_t const
@@ -437,7 +449,8 @@ namespace UMC_VVC_DECODER
             }
 
             mfxU16 profile = MFX_PROFILE_VVC_MAIN10;
-            if (in->mfx.CodecProfile == MFX_PROFILE_VVC_MAIN10)
+            if (in->mfx.CodecProfile == MFX_PROFILE_VVC_MAIN10 ||
+                in->mfx.CodecProfile == MFX_PROFILE_VVC_MAIN10_STILL_PICTURE)
             {
                 out->mfx.CodecProfile = in->mfx.CodecProfile;
             }
@@ -467,6 +480,7 @@ namespace UMC_VVC_DECODER
             case MFX_LEVEL_VVC_6:
             case MFX_LEVEL_VVC_61:
             case MFX_LEVEL_VVC_62:
+            case MFX_LEVEL_VVC_63:
             case MFX_LEVEL_VVC_155:
                 out->mfx.CodecLevel = in->mfx.CodecLevel;
                 break;
@@ -713,6 +727,19 @@ namespace UMC_VVC_DECODER
             default:
                 return MFX_LEVEL_UNKNOWN;
         }
+    }
+
+    UMC::Status getWinUnit(int chromaIdc, int& unitX, int& unitY)
+    {
+        const int winUnitX[] = { 1,2,2,1 };
+        const int WinUnitY[] = { 1,2,1,1 };
+
+        if (chromaIdc < CHROMA_FORMAT_400 || chromaIdc > CHROMA_FORMAT_444)
+            return UMC::UMC_ERR_FAILED;
+
+        unitX = winUnitX[chromaIdc];
+        unitY = WinUnitY[chromaIdc];
+        return UMC::UMC_OK;
     }
 
     }

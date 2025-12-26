@@ -1,4 +1,4 @@
-// Copyright (c) 2008-2021 Intel Corporation
+// Copyright (c) 2008-2025 Intel Corporation
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -27,6 +27,7 @@
 #include <assert.h>
 #include <limits>
 #include "math.h"
+#include <unordered_set>
 
 #include "libmfx_core.h"
 #include "libmfx_core_interface.h"
@@ -2224,16 +2225,15 @@ mfxStatus VideoVPPHW::Query(VideoCORE *core, mfxVideoParam *par)
     return sts;
 }
 
-mfxStatus VideoVPPHW::QueryImplsDescription(VideoCORE* core, mfxVPPDescription& caps, mfx::PODArraysHolder& arrayHolder)
+mfxStatus VideoVPPHW::QueryImplsDescription(VideoCORE* core, mfxVPPDescription& caps, mfx::PODArraysHolder& arrayHolder, const std::vector<mfxU32>& filterIds)
 {
     MfxHwVideoProcessing::mfxVppCaps vppCaps;
     QueryCaps(core, vppCaps);
     std::vector<mfxU32> capsList;
     ConvertCaps2ListDoUse(vppCaps, capsList);
 
-    for(auto &filterId : capsList)
+    auto queryFilter = [&](const mfxU32& filterId)
     {
-
         mfxVPPDescription::filter filter = { };
         filter.FilterFourCC = filterId;
 
@@ -2250,7 +2250,7 @@ mfxStatus VideoVPPHW::QueryImplsDescription(VideoCORE* core, mfxVPPDescription& 
             {
                 auto& formatIn = arrayHolder.PushBack(memCaps.Formats);
                 formatIn.InFormat = fourcc;
-                
+
                 for (auto fourccOut : g_TABLE_SUPPORTED_FOURCC)
                 {
                     mfxU32 outputFormat = 0;
@@ -2271,6 +2271,26 @@ mfxStatus VideoVPPHW::QueryImplsDescription(VideoCORE* core, mfxVPPDescription& 
 
         arrayHolder.PushBack(caps.Filters) = filter;
         caps.NumFilters++;
+    };
+
+    if (filterIds.size() == 0)
+    {
+        for (auto& filterId : capsList)
+        {
+            queryFilter(filterId);
+        }
+    }
+    else
+    {
+        std::unordered_set<mfxU32> capsSet(capsList.begin(), capsList.end());
+
+        for (auto& filterId : filterIds)
+        {
+            if (capsSet.find(filterId) == capsSet.end())
+                continue;
+
+            queryFilter(filterId);
+        }
     }
 
     return MFX_ERR_NONE;
@@ -4818,6 +4838,8 @@ mfxStatus VideoVPPHW::SyncTaskSubmission(DdiTask* pTask)
     else
     {
         sts = (*m_ddi)->Execute(&execParams);
+        // VPL query driver stautus and get back
+        m_executeParams.srGetParams = execParams.srGetParams;
     }
 
     if (sts != MFX_ERR_NONE)
@@ -5403,8 +5425,18 @@ mfxStatus ValidateParams(mfxVideoParam *par, mfxVppCaps *caps, VideoCORE *core, 
                 {
                     sts = GetWorstSts(sts, MFX_ERR_UNSUPPORTED);
                 }
-                if (par->vpp.In.FourCC != MFX_FOURCC_NV12 ||
-                    (par->vpp.Out.FourCC != MFX_FOURCC_NV12 && par->vpp.Out.FourCC != MFX_FOURCC_BGRA))
+                bool isFormatSupported = false;
+                if (CommonCaps::IsSrAYUVorYUY2FormatSupported(core->GetHWType()))
+                {
+                    // Check for supported formats when hardware supports AYUV and YUY2
+                    isFormatSupported = (par->vpp.In.FourCC == MFX_FOURCC_AYUV && par->vpp.Out.FourCC == MFX_FOURCC_AYUV) ||
+                        (par->vpp.In.FourCC == MFX_FOURCC_YUY2 && par->vpp.Out.FourCC == MFX_FOURCC_YUY2);
+                }
+                // Always check NV12/BGRA formats regardless of hardware support
+                isFormatSupported = isFormatSupported ||
+                    (par->vpp.In.FourCC == MFX_FOURCC_NV12 && (par->vpp.Out.FourCC == MFX_FOURCC_NV12 || par->vpp.Out.FourCC == MFX_FOURCC_BGRA));
+
+                if (!isFormatSupported)
                 {
                     sts = GetWorstSts(sts, MFX_ERR_UNSUPPORTED);
                 }
@@ -5468,6 +5500,15 @@ mfxStatus ValidateParams(mfxVideoParam *par, mfxVppCaps *caps, VideoCORE *core, 
                     fScaleY < 1.4f)
                 {
                     sts = GetWorstSts(sts, MFX_ERR_UNSUPPORTED);
+                }
+
+                if(extSr->SRAlgorithm == MFX_AI_SUPER_RESOLUTION_ALGORITHM_2)
+                { 
+                    if (((inputWidth > 1280) || (inputHeight > 720)) &&
+                        (CommonCaps::IsSrAlgorithm2Unsupported(core->GetHWType())))
+                    {
+                        sts = GetWorstSts(sts, MFX_ERR_UNSUPPORTED);
+                    }
                 }
             }
             break;
@@ -7129,6 +7170,16 @@ mfxStatus ConfigureExecuteParams(
         }
     }
 
+    if ( (0 == memcmp(&videoParam.vpp.In, &videoParam.vpp.Out, sizeof(mfxFrameInfo))) &&
+         executeParams.IsDoNothing() )
+    {
+        config.m_bCopyPassThroughEnable = true;
+    }
+    else
+    {
+        config.m_bCopyPassThroughEnable = false;// after Reset() parameters may be changed,
+                                            // flag should be disabled
+    }
 
     if (inDNRatio == outDNRatio && !executeParams.bVarianceEnable && !executeParams.bComposite &&
             !(config.m_extConfig.mode == IS_REFERENCES) )

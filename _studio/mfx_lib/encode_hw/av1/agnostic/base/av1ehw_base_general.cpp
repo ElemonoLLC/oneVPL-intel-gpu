@@ -619,6 +619,13 @@ void General::Query1WithCaps(const FeatureBlocks& /*blocks*/, TPushQ1 Push)
         return CheckOrderHintBits(out);
     });
 
+    Push(BLK_CheckRefFrameMvs
+        , [this](const mfxVideoParam&, mfxVideoParam& out, StorageW& strg) -> mfxStatus
+    {
+        const auto& caps = Glob::EncodeCaps::Get(strg);
+        return CheckRefFrameMvs(out, caps);
+    });
+
     Push(BLK_CheckCDEF
         , [this](const mfxVideoParam&, mfxVideoParam& out, StorageW& strg) -> mfxStatus
     {
@@ -968,11 +975,13 @@ void General::InitInternal(const FeatureBlocks& /*blocks*/, TPushII Push)
         if (!strg.Contains(Glob::FH::Key))
         {
             std::unique_ptr<MakeStorable<FH>> pFH(new MakeStorable<FH>);
+            const auto& caps = Glob::EncodeCaps::Get(strg);
             SetFH(
                 Glob::VideoParam::Get(strg)
                 , Glob::VideoCore::Get(strg).GetHWType()
                 , Glob::SH::Get(strg)
-                , *pFH);
+                , *pFH
+                , caps);
             strg.Insert(Glob::FH::Key, std::move(pFH));
         }
 
@@ -1557,6 +1566,25 @@ void General::SubmitTask(const FeatureBlocks& blocks, TPushST Push)
             , &surfSrc
             , MFX_MEMTYPE_EXTERNAL_FRAME | MFX_MEMTYPE_SYSTEM_MEMORY);
     });
+
+    Push(BLK_GetLaDataHDL
+        , [this, &blocks](
+            StorageW& global
+            , StorageW& s_task) -> mfxStatus
+        {
+            auto& core = Glob::VideoCore::Get(global);
+            auto& task = Task::Common::Get(s_task);
+
+            if (global.Contains(Glob::LplaDataBuffer::Key))
+            {
+                auto& LADataSurfaces = Glob::LplaDataBuffer::Get(global);
+                return core.GetFrameHDL(LADataSurfaces.Data.MemId, &task.HDLLPLAData.first);
+            }
+            else
+            {
+                return MFX_ERR_NONE;
+            }
+        });
 }
 
 void General::QueryTask(const FeatureBlocks& /*blocks*/, TPushQT Push)
@@ -2143,6 +2171,11 @@ inline bool CheckQpInRangeOrClip(mfxI32 qp, T& delta)
 
     delta = static_cast<T>(clipQp);
     return true;
+}
+
+inline void SetDeltaQp(const mfxVideoParam& par, FH& fh, eMFXHWType hw)
+{
+    return;
 }
 
 inline void ClipDeltaQp(const mfxVideoParam& par, FH& fh)
@@ -3053,6 +3086,7 @@ void General::SetSH(
     sh.enable_intra_edge_filter   = caps.AV1ToolSupportFlags.fields.enable_intra_edge_filter;
     sh.enable_jnt_comp            = caps.AV1ToolSupportFlags.fields.enable_jnt_comp;
     sh.enable_masked_compound     = caps.AV1ToolSupportFlags.fields.enable_masked_compound;
+    sh.enable_ref_frame_mvs       = caps.AV1ToolSupportFlags.fields.enable_ref_frame_mvs;
 
     const mfxExtCodingOption3& CO3      = ExtBuffer::Get(par);
     sh.color_config.BitDepth            = CO3.TargetBitDepthLuma;
@@ -3121,9 +3155,10 @@ inline INTERP_FILTER MapMfxInterpFilter(mfxU16 filter)
 
 void General::SetFH(
     const ExtBuffer::Param<mfxVideoParam>& par
-    , eMFXHWType /*hw*/
+    , eMFXHWType hw
     , const SH& sh
-    , FH& fh)
+    , FH& fh
+    , const EncodeCapsAv1& caps)
 {
     // this functions sets "static" parameters which can be changed via Reset
     fh = {};
@@ -3148,6 +3183,7 @@ void General::SetFH(
     fh.quantization_params.DeltaQUAc = auxPar.QP.UAcDeltaQ;
     fh.quantization_params.DeltaQVDc = auxPar.QP.VDcDeltaQ;
     fh.quantization_params.DeltaQVAc = auxPar.QP.VAcDeltaQ;
+    SetDeltaQp(par, fh, hw);
 
     // Loop Filter params
     if (IsOn(auxPar.EnableLoopFilter))
@@ -3179,7 +3215,19 @@ void General::SetFH(
     }
 
     fh.TxMode = TX_MODE_SELECT;
-    fh.reduced_tx_set = 1;
+    
+    // Set reduced_tx_set based on target usage and hardware capability
+    // Use full transform set (reduced_tx_set = 0) when target usage is best quality and hardware supports it
+    if (par.mfx.TargetUsage == MFX_TARGETUSAGE_1 && caps.AV1ToolSupportFlags.fields.allow_full_tx_set) {
+        fh.reduced_tx_set = 0;  // Use full transform set for best quality
+    } else {
+        fh.reduced_tx_set = 1;  // Use reduced transform set
+    }
+    
+    // Set use_ref_frame_mvs based on sequence header capability, user setting, and target usage
+    // Enabled when: sequence header supports it AND (user enables it OR target usage is best quality)
+    fh.use_ref_frame_mvs = (sh.enable_ref_frame_mvs == 0) ? 0 : ((IsOn(auxPar.EnableRefFrameMvs) || par.mfx.TargetUsage == MFX_TARGETUSAGE_1) ? 1 : 0);
+    
     fh.delta_lf_present = 0;
     fh.delta_lf_multi = 0;
 
@@ -3470,6 +3518,7 @@ void General::SetDefaults(
         SetDefault(pAuxPar->LoopFilter.ModeRefDeltaUpdate, MFX_CODINGOPTION_OFF);
         SetDefault(pAuxPar->DisplayFormatSwizzle, MFX_CODINGOPTION_OFF);
         SetDefault(pAuxPar->ErrorResilientMode, MFX_CODINGOPTION_OFF);
+        SetDefault(pAuxPar->EnableRefFrameMvs, MFX_CODINGOPTION_OFF);
     }
 
     SetDefaultOrderHint(pAuxPar);
@@ -3998,6 +4047,31 @@ mfxStatus General::CheckOrderHintBits(mfxVideoParam& par)
     mfxU32 changed = 0;
     changed += CheckMaxOrClip(pAuxPar->OrderHintBits, 8);
     MFX_CHECK(!changed, MFX_WRN_INCOMPATIBLE_VIDEO_PARAM);
+
+    return MFX_ERR_NONE;
+}
+
+mfxStatus General::CheckRefFrameMvs(mfxVideoParam& par, const ENCODE_CAPS_AV1& caps)
+{
+    mfxExtAV1AuxData* pAuxPar = ExtBuffer::Get(par);
+    MFX_CHECK(pAuxPar, MFX_ERR_NONE);
+
+    mfxU32 invalid = 0;
+
+    if (IsOn(pAuxPar->EnableRefFrameMvs) && caps.AV1ToolSupportFlags.fields.enable_ref_frame_mvs == false)
+    {
+        pAuxPar->EnableRefFrameMvs = MFX_CODINGOPTION_OFF;
+        invalid = 1;
+    }
+
+    MFX_CHECK(!invalid, MFX_ERR_UNSUPPORTED);
+
+    // enable_ref_frame_mvs can only be enabled when enable_order_hint is enabled
+    if (IsOn(pAuxPar->EnableRefFrameMvs) && !IsOn(pAuxPar->EnableOrderHint))
+    {
+        pAuxPar->EnableRefFrameMvs = MFX_CODINGOPTION_OFF;
+        return MFX_ERR_INVALID_VIDEO_PARAM;
+    }
 
     return MFX_ERR_NONE;
 }

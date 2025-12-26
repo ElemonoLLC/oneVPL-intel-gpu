@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2023 Intel Corporation
+# Copyright (c) 2017-2025 Intel Corporation
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -78,6 +78,8 @@ if (BUILD_KERNELS)
   endif()
 endif()
 
+
+include(${BUILDER_ROOT}/BuildOptionsPlatform.cmake)
 
 option( MFX_ENABLE_VVC_VIDEO_DECODE "Enabled VVC decoder?" ON)
 option( MFX_ENABLE_AV1_VIDEO_DECODE "Enabled AV1 decoder?" ON)

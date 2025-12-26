@@ -1015,7 +1015,8 @@ mfxStatus VideoVPPBase::Query(VideoCORE * core, mfxVideoParam *in, mfxVideoParam
             out->vpp.In.FourCC != MFX_FOURCC_R16 &&
             out->vpp.In.FourCC != MFX_FOURCC_ARGB16 &&
             // A2RGB10 supported as input in case of passthru copy
-            out->vpp.In.FourCC != MFX_FOURCC_A2RGB10)
+            out->vpp.In.FourCC != MFX_FOURCC_A2RGB10
+            )
         {
             if( out->vpp.In.FourCC )
             {
@@ -1051,7 +1052,7 @@ mfxStatus VideoVPPBase::Query(VideoCORE * core, mfxVideoParam *in, mfxVideoParam
 
         if( out->vpp.In.Width )
         {
-            if ( (out->vpp.In.Width & 15 ) != 0 )
+            if ( (out->vpp.In.Width & 7 ) != 0 )
             {
                 out->vpp.In.Width = 0;
                 mfxSts = MFX_ERR_UNSUPPORTED;
@@ -1060,7 +1061,7 @@ mfxStatus VideoVPPBase::Query(VideoCORE * core, mfxVideoParam *in, mfxVideoParam
 
         if (out->vpp.In.Height)
         {
-            if ((out->vpp.In.Height  & 15) !=0 )
+            if ((out->vpp.In.Height  & 7) !=0 )
             {
                 out->vpp.In.Height = 0;
                 mfxSts = MFX_ERR_UNSUPPORTED;
@@ -1120,7 +1121,7 @@ mfxStatus VideoVPPBase::Query(VideoCORE * core, mfxVideoParam *in, mfxVideoParam
 
         if ( out->vpp.Out.Width )
         {
-            if ( (out->vpp.Out.Width & 15 ) != 0 )
+            if ( (out->vpp.Out.Width & 7 ) != 0 )
             {
                 out->vpp.Out.Width = 0;
                 mfxSts = MFX_ERR_UNSUPPORTED;
@@ -1129,7 +1130,7 @@ mfxStatus VideoVPPBase::Query(VideoCORE * core, mfxVideoParam *in, mfxVideoParam
 
         if( out->vpp.Out.Height )
         {
-            if ((out->vpp.Out.Height  & 15) !=0)
+            if ((out->vpp.Out.Height  & 7) !=0)
             {
                 out->vpp.Out.Height = 0;
                 mfxSts = MFX_ERR_UNSUPPORTED;

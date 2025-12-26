@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Intel Corporation
+// Copyright (c) 2024 Intel Corporation
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -21,38 +21,38 @@
 #pragma once
 
 #include "mfx_common.h"
-#if defined(MFX_ENABLE_H265_VIDEO_ENCODE)
+#if defined(MFX_ENABLE_AV1_VIDEO_ENCODE)
 
-#include "hevcehw_base.h"
-#include "hevcehw_base_data.h"
-#include "ehw_resources_pool.h"
+#include "av1ehw_base_data.h"
+#include "av1ehw_base_lin.h"
+#include "av1ehw_base_impl.h"
 
-namespace HEVCEHW
+namespace AV1EHW
 {
-namespace Base
+namespace Linux
+{
+namespace Base_Next
 {
 
-class Allocator
-    : public FeatureBase
-{
-public:
-#define DECL_BLOCK_LIST\
-    DECL_BLOCK(Init)
-#define DECL_FEATURE_NAME "Base_Allocator"
-#include "hevcehw_decl_blocks.h"
-
-    Allocator(mfxU32 FeatureId)
-        : FeatureBase(FeatureId)
+    enum eFeatureId
     {
-    }
+        NUM_FEATURES
+    };
 
-protected:
-    virtual void InitAlloc(const FeatureBlocks& blocks, TPushIA Push) override;
+    class MFXVideoENCODEAV1_HW
+        : public Linux::Base::MFXVideoENCODEAV1_HW
+    {
+    public:
+        using TBaseImpl = Linux::Base::MFXVideoENCODEAV1_HW;
 
-    static IAllocation* MakeAlloc(std::unique_ptr<MfxEncodeHW::ResPool>&&);
-};
+        MFXVideoENCODEAV1_HW(
+            VideoCORE& core
+            , mfxStatus& status
+            , eFeatureMode mode = eFeatureMode::INIT);
+    };
 
-} //Base
-} //namespace HEVCEHW
+} //Base_Next
+} //Linux
+}// namespace AV1EHW
 
-#endif
+#endif //defined(MFX_ENABLE_AV1_VIDEO_ENCODE)

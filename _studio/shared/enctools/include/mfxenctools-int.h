@@ -40,7 +40,9 @@ extern "C"
 {
 #endif /* __cplusplus */
 
-
+#define LA_DATA_ENTRY_NUM    128
+#define LA_STATS_SIZE        480
+#define LA_DATA_BUFFER_SIZE  LA_DATA_ENTRY_NUM * LA_STATS_SIZE
 
 /* Extended Buffer Ids */
 enum {
@@ -139,6 +141,9 @@ typedef struct
 
         mfxU16  reserved5[60];
     };
+    mfxU16 LAMode;
+    mfxU8 SkipLAHintQuery;
+    mfxFrameSurface1* LADataSurfaces;
     mfxU16 NumExtParam;
     mfxExtBuffer** ExtParam;
 } mfxEncToolsCtrl;
@@ -228,6 +233,19 @@ enum
     MFX_QUANT_MATRIX_MEDIUM,
     MFX_QUANT_MATRIX_STRONG,
     MFX_QUANT_MATRIX_EXTREME
+};
+
+enum
+{
+    MFX_VPP_LOOKAHEAD = 0,
+    MFX_FASTPASS_LOOKAHEAD = 1
+};
+
+enum
+{
+    MFX_LPLA_NO_DS = 0,
+    MFX_LPLA_DS_2X = 1,
+    MFX_LPLA_DS_4X = 2,
 };
 
 MFX_PACK_BEGIN_USUAL_STRUCT()

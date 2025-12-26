@@ -1675,6 +1675,9 @@ void Legacy::PostReorderTask(const FeatureBlocks& /*blocks*/, TPushPostRT Push)
         auto sts = GetSliceHeader(par, task, sps, pps, Task::SSH::Get(s_task));
         MFX_CHECK_STS(sts);
 
+        //Update m_prevTask value after GetSliceHeaderLTRs
+        m_prevTask = task;
+
         return sts;
     });
 }
@@ -1924,6 +1927,26 @@ void Legacy::SubmitTask(const FeatureBlocks& /*blocks*/, TPushST Push)
         task.bCUQPMap = true;
         return MFX_ERR_NONE;
     });
+
+    Push(BLK_GetLaDataHDL
+        , [](
+            StorageW& global
+            , StorageW& s_task) -> mfxStatus
+        {
+            auto& core = Glob::VideoCore::Get(global);
+            auto& task = Task::Common::Get(s_task);
+
+            if (global.Contains(Glob::LplaDataBuffer::Key))
+            {
+                auto& LADataSurfaces = Glob::LplaDataBuffer::Get(global);
+                return core.GetFrameHDL(LADataSurfaces.Data.MemId, &task.HDLLPLAData.first);
+            }
+            else
+            {
+                return MFX_ERR_NONE;
+            }
+
+        });
 }
 
 void Legacy::QueryTask(const FeatureBlocks& /*blocks*/, TPushQT Push)
@@ -2479,7 +2502,6 @@ void Legacy::ConfigureTask(
         task.m_maxQP = CO2.MaxQPB;
     }
 
-    m_prevTask = task;
 }
 
 static mfxU32 CountL1(DpbArray const & dpb, mfxI32 poc)

@@ -57,6 +57,7 @@ namespace Base
     DECL_BLOCK(CheckFrameOBU                        )\
     DECL_BLOCK(CheckOrderHint                       )\
     DECL_BLOCK(CheckOrderHintBits                   )\
+    DECL_BLOCK(CheckRefFrameMvs                     )\
     DECL_BLOCK(CheckCDEF                            )\
     DECL_BLOCK(CheckTemporalLayers                  )\
     DECL_BLOCK(CheckGopRefDist                      )\
@@ -99,6 +100,7 @@ namespace Base
     DECL_BLOCK(ConfigureTask                        )\
     DECL_BLOCK(GetRawHDL                            )\
     DECL_BLOCK(CopySysToRaw                         )\
+    DECL_BLOCK(GetLaDataHDL                         )\
     DECL_BLOCK(CopyBS                               )\
     DECL_BLOCK(UpdateBsInfo                         )\
     DECL_BLOCK(SetRecInfo                           )\
@@ -169,6 +171,7 @@ namespace Base
         mfxStatus CheckFrameOBU(mfxVideoParam& par, const ENCODE_CAPS_AV1& caps);
         mfxStatus CheckOrderHint(mfxVideoParam& par, const ENCODE_CAPS_AV1& caps);
         mfxStatus CheckOrderHintBits(mfxVideoParam& par);
+        mfxStatus CheckRefFrameMvs(mfxVideoParam& par, const ENCODE_CAPS_AV1& caps);
         mfxStatus CheckCDEF(mfxVideoParam& par, const ENCODE_CAPS_AV1& caps);
         mfxStatus CheckTemporalLayers(mfxVideoParam& par);
         mfxStatus CheckStillPicture(mfxVideoParam& par);
@@ -202,7 +205,8 @@ namespace Base
             const ExtBuffer::Param<mfxVideoParam>& par
             , eMFXHWType hw
             , const SH& sh
-            , FH& fh);
+            , FH& fh
+            , const EncodeCapsAv1& caps);
 
         void ConfigureTask(
             TaskCommonPar& task

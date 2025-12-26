@@ -92,6 +92,8 @@ enum eMFXHWType
 
     MFX_HW_PTL       = 0x1800000,
 
+    MFX_HW_NVL_XE3G  = MFX_HW_PTL + 2,
+
 };
 
 enum eMFXGTConfig
@@ -464,9 +466,9 @@ typedef struct {
     { 0xA78D, MFX_HW_ADL_S, MFX_GT1 },//RPL-S
     { 0xA78E, MFX_HW_ADL_S, MFX_GT1 },//RPL-S
 
-    { 0xA7AA, MFX_HW_ADL_S, MFX_GT1 },//RPL 
-    { 0xA7AB, MFX_HW_ADL_S, MFX_GT1 },//RPL 
-    { 0xA7AC, MFX_HW_ADL_S, MFX_GT1 },//RPL 
+    { 0xA7AA, MFX_HW_ADL_S, MFX_GT1 },//RPL
+    { 0xA7AB, MFX_HW_ADL_S, MFX_GT1 },//RPL
+    { 0xA7AC, MFX_HW_ADL_S, MFX_GT1 },//RPL
     { 0xA7AD, MFX_HW_ADL_S, MFX_GT1 },//RPL
 
     /* ADL-P */
@@ -580,6 +582,7 @@ typedef struct {
 
     /* ARL S */
     { 0x7D67, MFX_HW_ARL, MFX_GT2 },
+    { 0xB640, MFX_HW_ARL, MFX_GT2 },
 
     /* ARL H*/
     { 0x7D51, MFX_HW_ARL, MFX_GT2 },
@@ -591,7 +594,15 @@ typedef struct {
     { 0xE20B, MFX_HW_BMG, MFX_GT4 },
     { 0xE20C, MFX_HW_BMG, MFX_GT4 },
     { 0xE20D, MFX_HW_BMG, MFX_GT4 },
+    { 0xE210, MFX_HW_BMG, MFX_GT4 },
+    { 0xE211, MFX_HW_BMG, MFX_GT4 },
     { 0xE212, MFX_HW_BMG, MFX_GT4 },
+    { 0xE216, MFX_HW_BMG, MFX_GT4 },
+    /* BMG Plus */
+    { 0xE220, MFX_HW_BMG, MFX_GT4 },
+    { 0xE221, MFX_HW_BMG, MFX_GT4 },
+    { 0xE222, MFX_HW_BMG, MFX_GT4 },
+    { 0xE223, MFX_HW_BMG, MFX_GT4 },
 
     /* LNL */
     { 0x6420, MFX_HW_LNL, MFX_GT2 },
@@ -604,10 +615,27 @@ typedef struct {
     { 0xB081, MFX_HW_PTL, MFX_GT2 },
     { 0xB082, MFX_HW_PTL, MFX_GT2 },
     { 0xB083, MFX_HW_PTL, MFX_GT2 },
+    { 0xB084, MFX_HW_PTL, MFX_GT2 },
+    { 0xB085, MFX_HW_PTL, MFX_GT2 },
+    { 0xB086, MFX_HW_PTL, MFX_GT2 },
+    { 0xB087, MFX_HW_PTL, MFX_GT2 },
     { 0xB08F, MFX_HW_PTL, MFX_GT2 },
     { 0xB090, MFX_HW_PTL, MFX_GT2 },
     { 0xB0A0, MFX_HW_PTL, MFX_GT2 },
     { 0xB0B0, MFX_HW_PTL, MFX_GT2 },
+
+
+    /* WCL / Wildcat Lake */
+    { 0xFD80, MFX_HW_PTL, MFX_GT2 },
+    { 0xFD81, MFX_HW_PTL, MFX_GT2 },
+
+    /* NVL-XE3G / Novalake-S/HX/UL/U/H */
+    { 0xD740, MFX_HW_NVL_XE3G, MFX_GT2 },
+    { 0xD741, MFX_HW_NVL_XE3G, MFX_GT2 },
+    { 0xD742, MFX_HW_NVL_XE3G, MFX_GT2 },
+    { 0xD743, MFX_HW_NVL_XE3G, MFX_GT2 },
+    { 0xD744, MFX_HW_NVL_XE3G, MFX_GT2 },
+    { 0xD745, MFX_HW_NVL_XE3G, MFX_GT2 },
 
 };
 

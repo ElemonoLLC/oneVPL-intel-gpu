@@ -1,4 +1,4 @@
-// Copyright (c) 2009-2024 Intel Corporation
+// Copyright (c) 2009-2025 Intel Corporation
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -54,6 +54,8 @@ mfxExtBuffer* GetExtendedBufferInternal(mfxExtBuffer** extBuf, mfxU32 numExtBuf,
 
 mfxStatus CheckFrameInfoCommon(mfxFrameInfo  *info, mfxU32 codecId)
 {
+    MFX_AUTO_LTRACE(MFX_TRACE_LEVEL_INTERNAL, "CheckFrameInfoCommon");
+
     MFX_CHECK_NULL_PTR1(info);
 
     MFX_CHECK(info->Width && info->Width % 16 == 0, MFX_ERR_INVALID_VIDEO_PARAM);
@@ -97,11 +99,15 @@ mfxStatus CheckFrameInfoCommon(mfxFrameInfo  *info, mfxU32 codecId)
     case MFX_FOURCC_IMC3:
         if (codecId != MFX_CODEC_JPEG)
         {
+            MFX_LTRACE_MSG(MFX_TRACE_LEVEL_CRITICAL_INFO, "MFX_ERR_INVALID_VIDEO_PARAM");
             MFX_RETURN(MFX_ERR_INVALID_VIDEO_PARAM);
         }
         break;
     default:
+        {
+        MFX_LTRACE_MSG(MFX_TRACE_LEVEL_CRITICAL_INFO, "MFX_ERR_INVALID_VIDEO_PARAM");
         MFX_RETURN(MFX_ERR_INVALID_VIDEO_PARAM);
+        }
     }
 
     MFX_CHECK((!info->BitDepthLuma || (info->BitDepthLuma >= 8)) &&
@@ -122,7 +128,10 @@ mfxStatus CheckFrameInfoCommon(mfxFrameInfo  *info, mfxU32 codecId)
             break;
 
         default:
+            {
+            MFX_LTRACE_MSG(MFX_TRACE_LEVEL_CRITICAL_INFO, "MFX_ERR_INVALID_VIDEO_PARAM");
             MFX_RETURN(MFX_ERR_INVALID_VIDEO_PARAM);
+            }
         }
     }
 
@@ -131,7 +140,8 @@ mfxStatus CheckFrameInfoCommon(mfxFrameInfo  *info, mfxU32 codecId)
         if (   info->FourCC != MFX_FOURCC_P010 && info->FourCC != MFX_FOURCC_P210
             && info->FourCC != MFX_FOURCC_Y210
             && info->FourCC != MFX_FOURCC_P016 && info->FourCC != MFX_FOURCC_Y216
-            && info->FourCC != MFX_FOURCC_Y416)
+            && info->FourCC != MFX_FOURCC_Y416 && info->FourCC != MFX_FOURCC_R16
+            )
             MFX_RETURN(MFX_ERR_INVALID_VIDEO_PARAM);
     }
     if (codecId != MFX_CODEC_JPEG)
@@ -225,6 +235,8 @@ mfxStatus CheckFrameInfoDecVideoProcCsc(mfxFrameInfo *info, mfxU32 codecId)
 
 mfxStatus CheckFrameInfoCodecs(mfxFrameInfo  *info, mfxU32 codecId)
 {
+    MFX_AUTO_LTRACE(MFX_TRACE_LEVEL_INTERNAL, "CheckFrameInfoCodecs");
+
     mfxStatus sts = CheckFrameInfoCommon(info, codecId);
     MFX_CHECK_STS(sts);
 
@@ -327,12 +339,16 @@ mfxStatus CheckFrameInfoCodecs(mfxFrameInfo  *info, mfxU32 codecId)
                   || info->ChromaFormat == MFX_CHROMAFORMAT_YUV444
                   , MFX_ERR_INVALID_VIDEO_PARAM);
         break;
+    case MFX_CODEC_AV1:
+        MFX_CHECK(info->ChromaFormat == MFX_CHROMAFORMAT_YUV420
+            , MFX_ERR_INVALID_VIDEO_PARAM);
+        break;
     default:
         MFX_CHECK(info->ChromaFormat == MFX_CHROMAFORMAT_YUV420 || info->ChromaFormat == MFX_CHROMAFORMAT_YUV400, MFX_ERR_INVALID_VIDEO_PARAM);
         break;
     }
 
-    switch (codecId) 
+    switch (codecId)
     {
 #if defined(MFX_ENABLE_VVC_VIDEO_DECODE)
     case MFX_CODEC_VVC:
@@ -346,6 +362,7 @@ mfxStatus CheckFrameInfoCodecs(mfxFrameInfo  *info, mfxU32 codecId)
         }
 #endif
     case MFX_CODEC_HEVC:
+    case MFX_CODEC_AVC:
         break;
     default:
         if (info->FourCC == MFX_FOURCC_P010
@@ -353,7 +370,7 @@ mfxStatus CheckFrameInfoCodecs(mfxFrameInfo  *info, mfxU32 codecId)
             || info->FourCC == MFX_FOURCC_Y210
             || info->FourCC == MFX_FOURCC_P016
             || info->FourCC == MFX_FOURCC_Y216
-            || info->FourCC == MFX_FOURCC_Y416) 
+            || info->FourCC == MFX_FOURCC_Y416)
         {
             MFX_CHECK(info->Shift == 1, MFX_ERR_INVALID_VIDEO_PARAM);
         }
@@ -407,7 +424,7 @@ mfxStatus UpdateCscOutputFormat(mfxVideoParam *par, mfxFrameAllocRequest *reques
             request->Info.Shift = 0;
             break;
         default:
-            return MFX_ERR_UNSUPPORTED;
+            MFX_RETURN(MFX_ERR_UNSUPPORTED);
         }
 
         request->Info.BitDepthChroma = request->Info.BitDepthLuma;
@@ -419,6 +436,8 @@ mfxStatus UpdateCscOutputFormat(mfxVideoParam *par, mfxFrameAllocRequest *reques
 
 static mfxStatus CheckVideoParamCommon(mfxVideoParam *in, eMFXHWType type)
 {
+    MFX_AUTO_LTRACE(MFX_TRACE_LEVEL_INTERNAL, "CheckVideoParamCommon");
+
     MFX_CHECK_NULL_PTR1(in);
 
     mfxStatus sts = CheckFrameInfoCodecs(&in->mfx.FrameInfo, in->mfx.CodecId);
@@ -457,7 +476,8 @@ static mfxStatus CheckVideoParamCommon(mfxVideoParam *in, eMFXHWType type)
         || in->mfx.FrameInfo.FourCC == MFX_FOURCC_Y210
         || in->mfx.FrameInfo.FourCC == MFX_FOURCC_P016
         || in->mfx.FrameInfo.FourCC == MFX_FOURCC_Y216
-        || in->mfx.FrameInfo.FourCC == MFX_FOURCC_Y416)
+        || in->mfx.FrameInfo.FourCC == MFX_FOURCC_Y416
+        )
     {
         if (type == MFX_HW_UNKNOWN)
         {
@@ -509,10 +529,10 @@ mfxStatus CheckVideoParamEncoders(mfxVideoParam *in, eMFXHWType type)
 mfxStatus CheckBitstream(const mfxBitstream *bs)
 {
     if (!bs || !bs->Data)
-        return MFX_ERR_NULL_PTR;
+        MFX_RETURN(MFX_ERR_NULL_PTR);
 
     if (bs->DataOffset + bs->DataLength > bs->MaxLength)
-        return MFX_ERR_UNDEFINED_BEHAVIOR;
+        MFX_RETURN(MFX_ERR_UNDEFINED_BEHAVIOR);
 
     return MFX_ERR_NONE;
 }
@@ -576,9 +596,7 @@ mfxStatus CheckFrameData(const mfxFrameSurface1 *surface)
     if (surface->Data.MemId)
         return MFX_ERR_NONE;
 
-    mfxStatus sts;
-    return
-        sts = CheckFramePointers(surface->Info, surface->Data);
+    MFX_RETURN(CheckFramePointers(surface->Info, surface->Data));
 }
 
 mfxStatus CheckDecodersExtendedBuffers(mfxVideoParam const* par)
@@ -757,7 +775,7 @@ mfxStatus PackMfxFrameRate(mfxU32 nom, mfxU32 den, mfxU32& packed)
         }
     }
     packed = (den << 16) | nom;
-    return sts;
+    MFX_RETURN(sts);
 }
 
 
@@ -1004,7 +1022,6 @@ void mfxVideoParamWrapper::CopyVideoParam(const mfxVideoParam & par)
     ExtParam = NumExtParam ? m_buffers.GetBuffers() : 0;
 }
 
-inline
 mfxU32 GetMinPitch(mfxU32 fourcc, mfxU16 width)
 {
     switch (fourcc)
@@ -1033,7 +1050,7 @@ mfxU32 GetMinPitch(mfxU32 fourcc, mfxU16 width)
         case MFX_FOURCC_A2RGB10:     return width * 4;
 
         case MFX_FOURCC_ARGB16:
-        case MFX_FOURCC_ABGR16:  
+        case MFX_FOURCC_ABGR16:
         case MFX_FOURCC_ABGR16F:     return width * 8;
 
         case MFX_FOURCC_YUY2:
@@ -1282,6 +1299,7 @@ mfxPlatform MakePlatform(eMFXHWType type, mfxU16 device_id)
                          platform.CodeName = MFX_PLATFORM_BATTLEMAGE;    break;
     // From Pantherlake platform.CodeName will be filled with MFX_PLATFORM_MAXIMUM. NOT to create any new CodeName values.
     case MFX_HW_PTL    : platform.CodeName = MFX_PLATFORM_MAXIMUM;       break;
+    case MFX_HW_NVL_XE3G : platform.CodeName = MFX_PLATFORM_MAXIMUM;     break; 
     default:
                          platform.MediaAdapterType = MFX_MEDIA_UNKNOWN;
                          platform.CodeName = MFX_PLATFORM_UNKNOWN;       break;

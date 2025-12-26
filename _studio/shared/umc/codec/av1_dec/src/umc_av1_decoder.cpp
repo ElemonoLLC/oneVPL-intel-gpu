@@ -699,7 +699,6 @@ namespace UMC_AV1_DECODER
                 uint32_t lst_shift;
                 bs.ReadOBUInfo(obuInfo);
                 const AV1_OBU_TYPE obuType = obuInfo.header.obu_type;
-                auto frame_source = dynamic_cast<SurfaceSource*>(allocator);
 
                 if (obuInfo.header.obu_type > OBU_PADDING)
                     return UMC::UMC_ERR_INVALID_PARAMS;
@@ -743,11 +742,8 @@ namespace UMC_AV1_DECODER
                         Update_drc(sequence_header.get());
                         m_RecreateSurfaceFlag = IsNeedRecreateSurface(old_seqHdr.get(), sequence_header.get());
 
-                        if ((frame_source && !frame_source->GetSurfaceType()) || (frame_source->GetSurfaceType() && m_RecreateSurfaceFlag))
-                        {
-                            // new resolution required
-                            return UMC::UMC_NTF_NEW_RESOLUTION;
-                        }
+                        // new resolution required
+                        return UMC::UMC_NTF_NEW_RESOLUTION;
                     }
 
                     set_seq_header_ready();
@@ -786,11 +782,9 @@ namespace UMC_AV1_DECODER
                         PreFrame_id = OldPreFrame_id;
 
                         m_RecreateSurfaceFlag = IsNeedRecreateSurface(old_seqHdr.get(), sequence_header.get());
-                        if ((frame_source && !frame_source->GetSurfaceType()) || (frame_source->GetSurfaceType() && m_RecreateSurfaceFlag))
-                        {
-                            // new resolution required
-                            return UMC::UMC_NTF_NEW_RESOLUTION;
-                        }
+
+                        // new resolution required
+                        return UMC::UMC_NTF_NEW_RESOLUTION;
                     }
 
                     fh.output_frame_width_in_tiles  = tlInfo.frameWidthInTiles;
@@ -1197,31 +1191,22 @@ namespace UMC_AV1_DECODER
         if ((lastest_submitted_frame) && (!last_frame_header.show_existing_frame)) 
         {
             FrameHeader const& FH_OutTemp = lastest_submitted_frame->GetFrameHeader();
-            if (FH_OutTemp.show_frame) //display frame
+            if (FH_OutTemp.show_frame)//display frame
             {
-                bool bAdded = false;
-                for(std::vector<AV1DecoderFrame*>::iterator iter=outputed_frames.begin(); iter!=outputed_frames.end(); iter++)
+                if (!lastest_submitted_frame->mark_Added)
                 {
-                    AV1DecoderFrame* temp = *iter;
-                    if (lastest_submitted_frame->UID == temp->UID)
-                    {
-                        bAdded = true;
-                        break;
-                    }
-                }
-                if (!bAdded)
                     outputed_frames.push_back(lastest_submitted_frame);
+                    lastest_submitted_frame->mark_Added = true;
+                }
             }
             else
             {
                 // For no display frame, it decrementReference here and frame.completedecoding() in working thread
-                if(pCurrFrame)
-                {
-                    if (lastest_submitted_frame->UID == -1)
-                        lastest_submitted_frame = nullptr;
-                    else if(lastest_submitted_frame != pCurrFrame)
-                        AV1DecrementReference(__FUNCTION__, __LINE__, lastest_submitted_frame);
-                }
+                // If there is not enough frame(pCurrFrame = nullptr) in decode output array(DPB), it also need to decrease refcounter for last submitted non-display frame
+                if (lastest_submitted_frame->UID == -1)
+                    lastest_submitted_frame = nullptr;
+                else if(lastest_submitted_frame != pCurrFrame)
+                    AV1DecrementReference(__FUNCTION__, __LINE__, lastest_submitted_frame);
             }
         }
 
@@ -1237,10 +1222,8 @@ namespace UMC_AV1_DECODER
                 iter++;
         }
 
-        // When no available buffer, don't update Curr buffer to avoid update DPB duplicated.
-        if(pCurrFrame!= NULL)
-            lastest_submitted_frame = pCurrFrame;
-
+        //update lateset_submitted_frame even pCurrFrame is nullptr(not enough frame) 
+        lastest_submitted_frame = pCurrFrame;
         last_frame_header = fh; //store latest frame header
     }
 

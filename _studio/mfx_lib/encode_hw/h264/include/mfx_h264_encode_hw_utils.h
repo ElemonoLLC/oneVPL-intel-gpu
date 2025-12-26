@@ -260,6 +260,7 @@ namespace MfxHwH264Encode
     }
 
     typedef Pair<mfxU8>  PairU8;
+    typedef Pair<mfxI8>  PairI8;
     typedef Pair<mfxU16> PairU16;
     typedef Pair<mfxU32> PairU32;
     typedef Pair<mfxI32> PairI32;
@@ -1120,6 +1121,7 @@ namespace MfxHwH264Encode
             Zero(m_ctrl);
             Zero(m_internalListCtrl);
             Zero(m_handleRaw);
+            Zero(m_handleLpla);
 #if defined(MFX_ENABLE_MCTF_IN_AVC)
             Zero(m_handleMCTF);
 #endif
@@ -1250,7 +1252,7 @@ namespace MfxHwH264Encode
         mfxU32  m_idxReconOffset;       // offset for multi-view coding
         mfxU16  m_idrPicId;
         PairU8  m_subMbPartitionAllowed;
-        PairU8  m_cqpValue;
+        PairI8  m_cqpValue;
         PairU8  m_insertAud;
         PairU8  m_insertSps;
         PairU8  m_insertPps;
@@ -1319,6 +1321,7 @@ namespace MfxHwH264Encode
         mfxMemId        m_midRec;       // reconstruction
         Pair<mfxMemId>  m_midBit;       // output bitstream
         mfxHDLPair      m_handleRaw;    // native handle to raw surface (self-allocated or given by app)
+        mfxHDLPair      m_handleLpla;
 #if defined(MFX_ENABLE_MCTF_IN_AVC)
         mfxMemId        m_midMCTF;
         mfxHDLPair      m_handleMCTF;   // Handle to MCTF denoised surface
@@ -1885,7 +1888,7 @@ inline void ResetEncToolsPar(mfxExtEncToolsConfig &config, mfxU16 value)
         config.BRC = value;
 
 }
-static mfxStatus InitCtrl(mfxVideoParam const & par, mfxEncToolsCtrl *ctrl)
+static mfxStatus InitCtrl(mfxVideoParam const & par, mfxEncToolsCtrl *ctrl, mfxU16 laMode = MFX_VPP_LOOKAHEAD)
 {
     MFX_CHECK_NULL_PTR1(ctrl);
 
@@ -1980,7 +1983,9 @@ static mfxStatus InitCtrl(mfxVideoParam const & par, mfxEncToolsCtrl *ctrl)
     if (ctrl->ScenarioInfo == MFX_SCENARIO_GAME_STREAMING) 
     {
         mfxU16 crW = par.mfx.FrameInfo.CropW ? par.mfx.FrameInfo.CropW : par.mfx.FrameInfo.Width;
-        if (crW >= 720) ctrl->LaScale = 2;
+        mfxU16 crH = par.mfx.FrameInfo.CropH ? par.mfx.FrameInfo.CropH : par.mfx.FrameInfo.Height;
+        if (crW * crH >= 1920 * 1080) ctrl->LaScale = 2;
+        else if (crW * crH >= 1280 * 720) ctrl->LaScale = 1;
     }
     else 
     {
@@ -1996,7 +2001,7 @@ static mfxStatus InitCtrl(mfxVideoParam const & par, mfxEncToolsCtrl *ctrl)
         }
         ctrl->LaQp = 26;
     }
-
+    ctrl->LAMode = laMode;
     return MFX_ERR_NONE;
 }
 class H264EncTools
@@ -2157,7 +2162,7 @@ public:
         return sts;
     }
 
-    mfxStatus  Init(MfxVideoParam &video)
+    mfxStatus  Init(MfxVideoParam &video, eMFXHWType platform)
     {
         MFX_AUTO_LTRACE(MFX_TRACE_LEVEL_INTERNAL, "class H264EncTools::Init");
         mfxExtEncToolsConfig requiredConf = {};
@@ -2171,7 +2176,9 @@ public:
 
 #if defined(MFX_ENABLE_ENCTOOLS)
 #endif
-        mfxStatus sts = InitCtrl(video, &m_EncToolCtrl);
+        mfxU16 laMode = CommonCaps::IsFastPassLASupported(platform, video.mfx.FrameInfo.ChromaFormat) ? (mfxU16)MFX_FASTPASS_LOOKAHEAD : (mfxU16)MFX_VPP_LOOKAHEAD;
+        m_EncToolCtrl.LADataSurfaces = &m_laSurf;
+        mfxStatus sts = InitCtrl(video, &m_EncToolCtrl, laMode);
         MFX_CHECK_STS(sts);
 
         sts = CreateEncTools(video, m_pEncTools, m_bEncToolsCreated);
@@ -2761,6 +2768,7 @@ public:
     inline bool isLAHWBRC() { return m_LAHWBRC; }
 #if defined(MFX_ENABLE_ENCTOOLS)
 #endif
+    mfxFrameSurface1        m_laSurf = {};
 
 private:
     mfxEncTools*            m_pEncTools = nullptr;
@@ -3302,6 +3310,8 @@ private:
 #if defined(MFX_ENABLE_ENCODE_QUALITYINFO)
         bool m_frameLevelQualityEn = false;
 #endif
+        mfxFrameSurface1        m_pLADataSurfaces = {};
+        MfxFrameAllocResponse   m_LADataFrameResponse = {};
     };
 
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2022-2024 Intel Corporation
+// Copyright (c) 2022-2025 Intel Corporation
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -26,8 +26,7 @@
 namespace CommonCaps {
     inline bool IsPreSiPlatform(eMFXHWType platform, mfxU16 /*deviceId*/)
     {
-
-        return platform >= MFX_HW_ARL;
+        return platform >= MFX_HW_NVL_XE3G;
     }
 
     inline bool IsVppSkipQuerySupported(eMFXHWType platform, mfxU16 deviceId)
@@ -58,6 +57,16 @@ namespace CommonCaps {
         return platform <= MFX_HW_XE_HP_SDV;
     }
 
+    inline bool IsSrAlgorithm2Unsupported(eMFXHWType platform)
+    {
+        return (platform != MFX_HW_DG2);
+    }
+
+    inline bool IsSrAYUVorYUY2FormatSupported(eMFXHWType platform)
+    {
+        return (platform >= MFX_HW_LNL);
+    }
+
     inline bool IsVAEncSliceLPSupported(eMFXHWType platform)
     {
         return (platform < MFX_HW_MTL);
@@ -72,6 +81,22 @@ namespace CommonCaps {
     inline bool IsCBRSlidingWinSupported(eMFXHWType platform)
     {
         return (platform >= MFX_HW_MTL);
+    }
+
+    inline bool IsFastPassLASupported(eMFXHWType platform, mfxU16 ChromaFormat)
+    {
+        return ((platform == MFX_HW_BMG)
+            && (ChromaFormat == MFX_CHROMAFORMAT_YUV420));
+    }
+
+    inline bool IsLADataBufferSupported(eMFXHWType platform)
+    {
+        return (platform >= MFX_HW_PTL);
+    }
+
+    inline bool IsNewLASupported(eMFXHWType platform)
+    {
+        return (platform >= MFX_HW_PTL);
     }
 }
 
@@ -114,6 +139,7 @@ namespace H264ECaps {
         // VDEnc B frame supported from DG2
         return (platform >= MFX_HW_DG2);
     }
+
 }
 #endif //MFX_ENABLE_H264_VIDEO_ENCODE
 
@@ -195,6 +221,14 @@ namespace VP8DCaps {
 
 #ifdef MFX_ENABLE_AV1_VIDEO_DECODE
 namespace AV1DCaps {
+    inline bool IsPlatformSupported(eMFXHWType platform)
+    {
+        return platform >= MFX_HW_TGL_LP;
+    }
+    inline bool IsDec420Supported(eMFXHWType platform)
+    {
+        return platform >= MFX_HW_TGL_LP;
+    }
     inline bool IsPostProcessSupported(eMFXHWType platform)
     {
         return platform >= MFX_HW_MTL;
