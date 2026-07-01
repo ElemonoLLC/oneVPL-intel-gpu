@@ -2314,16 +2314,6 @@ mfxStatus MfxHwH264Encode::CheckVideoParamQueryLike(
                 par.mfx.RateControlMethod = 0;
             }
         }
-
-        if (par.mfx.RateControlMethod == MFX_RATECONTROL_CQP
-            && par.calcParam.cqpHrdMode == 0)
-        {
-            mfxU8 minQP = 10;
-            mfxU8 maxQP = 51;
-            if (!CheckRange(par.mfx.QPI, minQP, maxQP)) changed = true;
-            if (!CheckRange(par.mfx.QPP, minQP, maxQP)) changed = true;
-            if (!CheckRange(par.mfx.QPB, minQP, maxQP)) changed = true;
-        }
     }
 
     if (par.mfx.GopRefDist > 1 && hwCaps.ddi_caps.SliceIPOnly)
@@ -2890,6 +2880,17 @@ mfxStatus MfxHwH264Encode::CheckVideoParamQueryLike(
 
         changed = true;
         par.mfx.FrameInfo.ChromaFormat = MFX_CHROMAFORMAT_YUV444;
+    }
+
+    if (par.mfx.RateControlMethod == MFX_RATECONTROL_CQP
+        && par.calcParam.cqpHrdMode == 0)
+    {
+        mfxU8 minQP = 10;
+        mfxU8 maxQP = 51;
+
+        if (!CheckRange(par.mfx.QPI, minQP, maxQP)) changed = true;
+        if (!CheckRange(par.mfx.QPP, minQP, maxQP)) changed = true;
+        if (!CheckRange(par.mfx.QPB, minQP, maxQP)) changed = true;
     }
 
     if (hwCaps.ddi_caps.Color420Only &&
