@@ -192,6 +192,14 @@ namespace Base
         uint32_t separate_uv_delta_q            = 0;
     };
 
+    // Resolved per-sequence PreProc state.
+    struct PreProcSettings
+    {
+        bool   Enabled = false;
+        mfxU16 NumRefPast[3] = { 0,0,0 };   // I, P(Layer1), B0(Layer2)
+        mfxU16 NumRefFuture[3] = { 0,0,0 };  // I, P(Layer1), B0(Layer2)
+    };
+
     struct SH
     {
         //Rev 0.85 parameters (AV1 spec version 1.0) in order of appearance/calculation in sequence_header_obu()
@@ -240,6 +248,8 @@ namespace Base
         ColorConfig color_config;
 
         uint32_t film_grain_param_present           = 0;
+
+        PreProcSettings preproc_setting = {};
     };
 
     enum FRAME_TYPE
@@ -808,6 +818,10 @@ namespace Base
         mfxU16              LaDistToNextI    = 0;         /* First I Frame in Lookahead frames (0 if not found) */
     };
 
+    // L0 = past refs (cap 4); L1 = future refs (cap 6; the extra 2 slots beyond the current
+    // presets' max of 4 are reserved for future presets).
+    constexpr mfxU16 MAX_PREPROC_REF_L0 = 4;
+    constexpr mfxU16 MAX_PREPROC_REF_L1 = 6;
     struct TaskCommonPar
         : DpbFrame
     {
@@ -859,6 +873,10 @@ namespace Base
 
         mfxExtRefListCtrl InternalListCtrl       = {};
         bool              InternalListCtrlPresent = false;
+
+        // Pre-processing ref slots
+        TaskCommonPar* PreProcRef_L0[MAX_PREPROC_REF_L0] = {};
+        TaskCommonPar* PreProcRef_L1[MAX_PREPROC_REF_L1] = {};
     };
 
     inline void Invalidate(TaskCommonPar& par)
@@ -1170,7 +1188,7 @@ namespace Base
     };
 
     struct Reorderer
-        : CallChain<TTaskIt, TTaskIt, TTaskIt, bool>
+        : CallChain<TTaskIt, TTaskIt, TTaskIt, bool, TTaskIt>
     {
         mfxU16 BufferSize = 0;
         //NotNull<DpbArray*> DPB;
@@ -1332,6 +1350,7 @@ namespace Base
         , FEATURE_QUALITYINFO
         , FEATURE_INTERPO_FILTER
         , FEATURE_CDEF
+        , FEATURE_PREPROC
         , NUM_FEATURES
     };
 

@@ -107,12 +107,19 @@ static T GetFirstFrameToDisplay(
 TTaskIt TaskManager::GetNextTaskToEncode(TTaskIt begin, TTaskIt end, bool bFlush)
 {
     auto IsIdrTask = [](const StorageR& rTask) { return IsIdr(Task::Common::Get(rTask).FrameType); };
-    auto stopIt = std::find_if(begin, end, IsIdrTask);
-    bFlush |= (stopIt != end);
 
-    // taskIt returned from m_pReorder might be equal to stopIt, which might be both valid or invalid iterator
-    // In the former case, stopIt points to IDR frame. In the latter case, stopIt points to end iterator in the original container
-    auto taskIt = (*m_pReorder)(begin, stopIt, bFlush);
+    // find the next IDR frame (skip the first frame if it is an IDR)
+    auto nextIdrIt = begin;
+    if (nextIdrIt != end && IsIdrTask(*nextIdrIt))
+    {
+        ++nextIdrIt;
+    }
+    auto stopIt = std::find_if(nextIdrIt, end, IsIdrTask);
+
+    // unified force-encode condition: sequence flush or a next IDR was found
+    bool forceEncode = bFlush || (stopIt != end);
+
+    auto taskIt = (*m_pReorder)(begin, end, forceEncode, stopIt);
     if (taskIt == end)
         return taskIt;
 

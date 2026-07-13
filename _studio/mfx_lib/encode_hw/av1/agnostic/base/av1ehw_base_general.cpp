@@ -915,19 +915,48 @@ void General::InitExternal(const FeatureBlocks& blocks, TPushIE Push)
 
 void General::InitInternal(const FeatureBlocks& /*blocks*/, TPushII Push)
 {
+    Push(BLK_SetSH
+        , [this](StorageRW& strg, StorageRW&) -> mfxStatus
+        {
+            if (!strg.Contains(Glob::SH::Key))
+            {
+                auto pSH = make_storable<SH>();
+
+                SetSH(
+                    Glob::VideoParam::Get(strg)
+                    , Glob::VideoCore::Get(strg).GetHWType()
+                    , Glob::EncodeCaps::Get(strg)
+                    , *pSH);
+
+                strg.Insert(Glob::SH::Key, std::move(pSH));
+            }
+
+            return MFX_ERR_NONE;
+        });
+
     Push(BLK_SetReorder
         , [this](StorageRW& strg, StorageRW&) -> mfxStatus
     {
         using namespace std::placeholders;
         auto& par = Glob::VideoParam::Get(strg);
+        auto& sh = Glob::SH::Get(strg);
 
         auto pReorderer = make_storable<Reorderer>();
         pReorderer->Push(
-            [&](Reorderer::TExt, TTaskIt begin, TTaskIt end, bool bFlush)
+            [&](Reorderer::TExt, TTaskIt begin, TTaskIt end, bool bFlush, TTaskIt stopIt)
         {
-            return ReorderWrap(par, begin, end, bFlush);
+            return ReorderWrap(par, sh, begin, end, bFlush, stopIt);
         });
-        pReorderer->BufferSize = par.mfx.GopRefDist > 1 ? par.mfx.GopRefDist - 1 : 0;
+        // Reorder buffer must stay aligned with the raw-surface pool: BLK_AdjustRawNum
+        // adds the same `preprocExtra` to QueryIOSurf, so app/encoder buffering match.
+        mfxU16 preprocExtra = 0;
+        if (sh.preproc_setting.Enabled)
+        {
+            preprocExtra = std::max({ sh.preproc_setting.NumRefFuture[0]
+                                    , sh.preproc_setting.NumRefFuture[1]
+                                    , sh.preproc_setting.NumRefFuture[2] });
+        }
+        pReorderer->BufferSize = par.mfx.GopRefDist > 1 ? par.mfx.GopRefDist - 1 + preprocExtra : 0;
         //pReorderer->DPB = &m_prevTask.DPB.After;
 
         strg.Insert(Glob::Reorder::Key, std::move(pReorderer));
@@ -940,25 +969,6 @@ void General::InitInternal(const FeatureBlocks& /*blocks*/, TPushII Push)
     {
         strg.Insert(Glob::FramesToShowInfo::Key, make_storable<TFramesToShowInfo>());
         strg.Insert(Glob::RepeatFrameSizeInfo::Key, make_storable<TRepeatFrameSizeInfo>());
-
-        return MFX_ERR_NONE;
-    });
-
-    Push(BLK_SetSH
-        , [this](StorageRW& strg, StorageRW&) -> mfxStatus
-    {
-        if (!strg.Contains(Glob::SH::Key))
-        {
-            auto pSH = make_storable<SH>();
-
-            SetSH(
-                Glob::VideoParam::Get(strg)
-                , Glob::VideoCore::Get(strg).GetHWType()
-                , Glob::EncodeCaps::Get(strg)
-                , *pSH);
-
-            strg.Insert(Glob::SH::Key, std::move(pSH));
-        }
 
         return MFX_ERR_NONE;
     });
@@ -2862,25 +2872,28 @@ static T BPyrReorder(T begin, T end)
 template<class T>
 static T Reorder(
     ExtBuffer::Param<mfxVideoParam> const & par
+    , SH& sh
     , DpbType const & dpb
     , T begin
     , T end
-    , bool flush)
+    , bool forceEncode,    // unified force-encode flag
+    T nextIdrPos)          // position of the next IDR frame
 {
     typedef typename std::iterator_traits<T>::reference TRef;
 
     const mfxExtCodingOption2& CO2        = ExtBuffer::Get(par);
     const bool                 isBPyramid = (CO2.BRefType == MFX_B_REF_PYRAMID);
 
-    T top        = begin;
-    T reorderOut = top;
+    T effectiveEnd = nextIdrPos;
+    T top          = begin;
+    T reorderOut   = top;
     std::list<T> brefs;
     auto IsB  = [](TRef f) { return AV1EHW::IsB(f.FrameType); };
     auto NoL1 = [&](T& f) { return !HaveL1(dpb, f->DisplayOrderInGOP); };
 
     std::generate_n(
         std::back_inserter(brefs)
-        , std::distance(begin, std::find_if_not(begin, end, IsB))
+        , std::distance(begin, std::find_if_not(begin, effectiveEnd, IsB))
         , [&]() { return top++; });
 
     brefs.remove_if(NoL1);
@@ -2911,12 +2924,46 @@ static T Reorder(
     else
     {
         // optimize end of GOP or end of sequence
-        const bool bForcePRef = flush && top == end && begin != end;
+        const bool bForcePRef = forceEncode && top == effectiveEnd && begin != effectiveEnd;
         if (bForcePRef)
         {
             --top;
             top->FrameType = mfxU16(MFX_FRAMETYPE_P | MFX_FRAMETYPE_REF);
         }
+
+        // PreProc delay logic, forced encode never delays
+        if (top != effectiveEnd && sh.preproc_setting.Enabled && !forceEncode)
+        {
+            mfxI32 requiredFutureFrames = 0;
+
+            if (IsP(top->FrameType))
+            {
+                requiredFutureFrames = sh.preproc_setting.NumRefFuture[1];
+            }
+            else if (IsI(top->FrameType))
+            {
+                requiredFutureFrames = sh.preproc_setting.NumRefFuture[0];
+            }
+
+            if (requiredFutureFrames > 0)
+            {
+                mfxI32 framesAfterTop = 0;
+                for (auto it = begin; it != effectiveEnd; ++it)
+                {
+                    if (it->DisplayOrderInGOP > top->DisplayOrderInGOP)
+                    {
+                        ++framesAfterTop;
+                    }
+                }
+
+                if (framesAfterTop < requiredFutureFrames)
+                {
+                    // return end to defer: encode no frame yet
+                    return end;
+                }
+            }
+        }
+
         reorderOut = top;
     }
 
@@ -2925,12 +2972,14 @@ static T Reorder(
 
 TTaskIt General::ReorderWrap(
     ExtBuffer::Param<mfxVideoParam> const & par
+    , SH& sh
     , TTaskIt begin
     , TTaskIt end
-    , bool flush)
+    , bool flush
+    , TTaskIt stopIt)
 {
     typedef TaskItWrap<FrameBaseInfo, Task::Common::Key> TItWrap;
-    return Reorder(par, m_prevTask.DPB, TItWrap(begin), TItWrap(end), flush).it;
+    return Reorder(par, sh, m_prevTask.DPB, TItWrap(begin), TItWrap(end), flush, TItWrap(stopIt)).it;
 }
 
 mfxU32 General::GetMinBsSize(

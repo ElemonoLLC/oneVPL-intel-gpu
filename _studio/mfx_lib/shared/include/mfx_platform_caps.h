@@ -167,6 +167,12 @@ namespace AV1ECaps {
     {
         return (platform == MFX_HW_DG2);
     }
+
+    // PreProc / temporal-filter (mfxExtEncPreProcessing.TFLevel) is currently only on NVL-S/H.
+    inline bool IsPreProcSupported(eMFXHWType platform)
+    {
+        return (platform == MFX_HW_NVL_XE3G);
+    }
 }
 
 namespace HEVCECaps {

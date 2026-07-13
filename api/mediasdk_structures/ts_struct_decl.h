@@ -980,6 +980,12 @@ STRUCT(mfxExtPartialBitstreamParam,
     FIELD_T(mfxU16, reserved)
 )
 
+STRUCT(mfxExtEncPreProcessing,
+    FIELD_S(mfxExtBuffer, Header)
+    FIELD_T(mfxU16, TFLevel)
+    FIELD_T(mfxU16, reserved)
+)
+
 STRUCT(mfxExtVPPPercEncPrefilter,
     FIELD_S(mfxExtBuffer, Header)
     FIELD_T(mfxU16, reserved)
