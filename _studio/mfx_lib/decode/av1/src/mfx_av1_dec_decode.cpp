@@ -148,7 +148,7 @@ VideoDECODEAV1::~VideoDECODEAV1()
 {
     if (m_is_init)
     {
-        Close();
+        try { Close(); } catch (...) {}
     }
 }
 
@@ -607,14 +607,19 @@ mfxStatus CheckLevel(mfxVideoParam* in, mfxVideoParam* out)
 inline
 mfxStatus CheckFourCCProfile(mfxVideoParam* in, eMFXHWType hwType)
 {
-    mfxU32 fcc = in->mfx.FrameInfo.FourCC;
-    switch(in->mfx.CodecProfile)
+    if (in)
     {
-    case MFX_PROFILE_AV1_MAIN:
-        return (AV1DCaps::IsDec420Supported(hwType) && (fcc == MFX_FOURCC_NV12 || fcc == MFX_FOURCC_P010)) ? MFX_ERR_NONE : MFX_ERR_UNSUPPORTED;
-    default:
-        return MFX_ERR_UNSUPPORTED;
+        mfxU32 fcc = in->mfx.FrameInfo.FourCC;
+        switch (in->mfx.CodecProfile)
+        {
+        case MFX_PROFILE_AV1_MAIN:
+            return (AV1DCaps::IsDec420Supported(hwType) && (fcc == MFX_FOURCC_NV12 || fcc == MFX_FOURCC_P010)) ? MFX_ERR_NONE : MFX_ERR_UNSUPPORTED;
+        default:
+            return MFX_ERR_UNSUPPORTED;
+        }
     }
+    else
+        return MFX_ERR_NONE;
 }
 
 
@@ -1010,7 +1015,7 @@ mfxStatus VideoDECODEAV1::SubmitFrame(mfxBitstream* bs, mfxFrameSurface1* surfac
     {
         bool workSfsIsEmpty = IsSurfaceEmpty(*surface_work);
 
-        MFX_CHECK(!workSfsIsEmpty, MFX_ERR_LOCK_MEMORY);
+        MFX_CHECK(!workSfsIsEmpty, MFX_ERR_INVALID_VIDEO_PARAM);
 
         mfxStatus sts = MFX_ERR_NONE;
         if (m_is_cscInUse != true)

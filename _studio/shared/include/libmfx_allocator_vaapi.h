@@ -78,8 +78,12 @@ public:
 
     ~SurfaceScopedLock()
     {
-        if (m_mapped)        std::ignore = MFX_STS_TRACE(Unmap());
-        if (m_image_created) std::ignore = MFX_STS_TRACE(DestroyImage());
+        try
+        {
+            if (m_mapped)        std::ignore = MFX_STS_TRACE(Unmap());
+            if (m_image_created) std::ignore = MFX_STS_TRACE(DestroyImage());
+        }
+        catch (...) {}
     }
 
     mfxStatus DeriveImage()
@@ -324,6 +328,9 @@ class mfxSurfaceVAAPIImpl
     : public mfxSurfaceImpl<mfxSurfaceVAAPI>
 {
 public:
+
+    mfxSurfaceVAAPIImpl(const mfxSurfaceVAAPIImpl&) = delete;
+    mfxSurfaceVAAPIImpl& operator=(const mfxSurfaceVAAPIImpl&) = delete;
 
     static mfxSurfaceVAAPIImpl* Create(const mfxSurfaceHeader& export_header, mfxFrameSurfaceInterfaceImpl* p_base_surface, std::shared_ptr<VADisplayWrapper>& display, VASurfaceID surface_id)
     {

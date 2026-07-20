@@ -531,7 +531,7 @@ mfxStatus CheckBitstream(const mfxBitstream *bs)
     if (!bs || !bs->Data)
         MFX_RETURN(MFX_ERR_NULL_PTR);
 
-    if (bs->DataOffset + bs->DataLength > bs->MaxLength)
+    if (static_cast<mfxU64>(bs->DataOffset) + bs->DataLength > bs->MaxLength)
         MFX_RETURN(MFX_ERR_UNDEFINED_BEHAVIOR);
 
     return MFX_ERR_NONE;
@@ -1299,7 +1299,10 @@ mfxPlatform MakePlatform(eMFXHWType type, mfxU16 device_id)
                          platform.CodeName = MFX_PLATFORM_BATTLEMAGE;    break;
     // From Pantherlake platform.CodeName will be filled with MFX_PLATFORM_MAXIMUM. NOT to create any new CodeName values.
     case MFX_HW_PTL    : platform.CodeName = MFX_PLATFORM_MAXIMUM;       break;
-    case MFX_HW_NVL_XE3G : platform.CodeName = MFX_PLATFORM_MAXIMUM;     break; 
+    case MFX_HW_NVL_XE3G : platform.CodeName = MFX_PLATFORM_MAXIMUM;     break;
+    case MFX_HW_CRI    : platform.MediaAdapterType = MFX_MEDIA_DISCRETE;
+                         platform.CodeName = MFX_PLATFORM_MAXIMUM;       break;
+    case MFX_HW_NVL    : platform.CodeName = MFX_PLATFORM_MAXIMUM;       break;
     default:
                          platform.MediaAdapterType = MFX_MEDIA_UNKNOWN;
                          platform.CodeName = MFX_PLATFORM_UNKNOWN;       break;

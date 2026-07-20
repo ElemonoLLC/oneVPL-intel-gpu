@@ -215,13 +215,11 @@ mfxU32 mfx_UMC_FrameAllocator::InternalFrameData::GetSize() const
 
 void mfx_UMC_FrameAllocator::InternalFrameData::AddNewFrame(mfx_UMC_FrameAllocator * alloc, mfxFrameSurface1 *surface, UMC::VideoDataInfo * info)
 {
-    FrameRefInfo refInfo;
-    m_frameDataRefs.push_back(refInfo);
+    m_frameDataRefs.emplace_back();
 
-    FrameInfo  frameInfo;
-    m_frameData.push_back(frameInfo);
+    m_frameData.emplace_back();
 
-    mfxU32 index = (mfxU32)(m_frameData.size() - 1);;
+    mfxU32 index = (mfxU32)(m_frameData.size() - 1);
 
     memset(&(m_frameData[index].first), 0, sizeof(m_frameData[index].first));
     m_frameData[index].first.Data.MemId = surface->Data.MemId;
@@ -1367,9 +1365,9 @@ SurfaceSource::SurfaceSource(VideoCORE* core, const mfxVideoParam& video_param, 
 
 }
 
-void SurfaceSource::CreateUMCAllocator(const mfxVideoParam & video_param, eMFXPlatform platform, bool needVppJPEG)
+void SurfaceSource::CreateUMCAllocator(const mfxVideoParam & video_param, eMFXPlatform platform, bool needVpp)
 {
-    (void) needVppJPEG;
+    (void) needVpp;
 
     if (MFX_PLATFORM_SOFTWARE == platform)
     {
@@ -1387,7 +1385,7 @@ void SurfaceSource::CreateUMCAllocator(const mfxVideoParam & video_param, eMFXPl
             break;
         case MFX_CODEC_JPEG:
 #if defined (MFX_ENABLE_MJPEG_VIDEO_DECODE)
-            if (!needVppJPEG)
+            if (!needVpp)
                 m_umc_allocator_adapter.reset(new mfx_UMC_FrameAllocator_D3D());
 #if defined (MFX_ENABLE_VPP)
             else

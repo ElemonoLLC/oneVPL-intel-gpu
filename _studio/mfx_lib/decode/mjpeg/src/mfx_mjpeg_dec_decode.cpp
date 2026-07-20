@@ -300,6 +300,8 @@ mfxStatus VideoDECODEMJPEG::Reset(mfxVideoParam *par)
     TRACE_EVENT(MFX_TRACE_API_DECODE_RESET_TASK, EVENT_TYPE_START, TR_KEY_MFX_API, make_event_data(par ? par->mfx.FrameInfo.Width : 0,
         par ? par->mfx.FrameInfo.Height : 0, par ? par->mfx.CodecId : 0));
 
+    std::lock_guard<std::mutex> guard(m_mGuard);
+
     MFX_CHECK(m_isInit, MFX_ERR_NOT_INITIALIZED);
 
     MFX_CHECK_NULL_PTR1(par);
@@ -1555,6 +1557,9 @@ mfxStatus VideoDECODEMJPEGBase_HW::Close(void)
             m_dsts.pop_back();
         }
     }
+
+    delete[] m_dst;
+    m_dst = nullptr;
 
     memset(&m_stat, 0, sizeof(mfxDecodeStat));
 

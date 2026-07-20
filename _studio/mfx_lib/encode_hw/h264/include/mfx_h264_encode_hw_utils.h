@@ -344,7 +344,8 @@ namespace MfxHwH264Encode
     mfxU8 GetQpValue(
         DdiTask const &       task,
         MfxVideoParam const & par,
-        mfxU32                frameType);
+        mfxU32                frameType,
+        MFX_ENCODE_CAPS const & hwCaps = {});
 
     PairU16 GetPicStruct(
         MfxVideoParam const & video,
@@ -1888,6 +1889,26 @@ inline void ResetEncToolsPar(mfxExtEncToolsConfig &config, mfxU16 value)
         config.BRC = value;
 
 }
+
+inline bool IsEncToolsConfigDefined(const mfxExtEncToolsConfig* pConfig)
+{
+    //this code is based on definition of MFX_CODINGOPTION_UNKNOWN=0 
+    if (!pConfig)
+        return false;
+
+    return
+        pConfig->AdaptiveI | pConfig->AdaptiveB
+        | pConfig->AdaptiveRefP | pConfig->AdaptiveRefB
+        | pConfig->SceneChange
+        | pConfig->AdaptiveLTR
+        | pConfig->AdaptivePyramidQuantP | pConfig->AdaptivePyramidQuantB
+        | pConfig->AdaptiveQuantMatrices
+        | pConfig->AdaptiveMBQP
+        | pConfig->BRCBufferHints
+        | pConfig->SaliencyMapHint
+        | pConfig->BRC;
+}
+
 static mfxStatus InitCtrl(mfxVideoParam const & par, mfxEncToolsCtrl *ctrl, mfxU16 laMode = MFX_VPP_LOOKAHEAD)
 {
     MFX_CHECK_NULL_PTR1(ctrl);
@@ -1899,6 +1920,9 @@ static mfxStatus InitCtrl(mfxVideoParam const & par, mfxEncToolsCtrl *ctrl, mfxU
     mfxExtCodingOptionDDI* extDdi = (mfxExtCodingOptionDDI*)mfx::GetExtBuffer(par.ExtParam, par.NumExtParam, MFX_EXTBUFF_DDI);
     MFX_CHECK_NULL_PTR1(extDdi);
 
+    mfxExtEncToolsConfig* pConfig = (mfxExtEncToolsConfig*)mfx::GetExtBuffer(par.ExtParam, par.NumExtParam, MFX_EXTBUFF_ENCTOOLS_CONFIG);
+    bool isHWLPLA = CO2->LookAheadDepth && !IsEncToolsConfigDefined(pConfig) && !IsOn(CO2->ExtBRC);
+    bool isEnctoolLA = CO2->LookAheadDepth && (IsEncToolsConfigDefined(pConfig) || IsOn(CO2->ExtBRC));
 
     ctrl->CodecId = par.mfx.CodecId;
     ctrl->CodecProfile = par.mfx.CodecProfile;
@@ -1980,14 +2004,13 @@ static mfxStatus InitCtrl(mfxVideoParam const & par, mfxEncToolsCtrl *ctrl, mfxU
     // LaScale here
     ctrl->LaScale = 0;
     ctrl->LaQp = 30;
-    if (ctrl->ScenarioInfo == MFX_SCENARIO_GAME_STREAMING) 
+    if (isHWLPLA)
     {
-        mfxU16 crW = par.mfx.FrameInfo.CropW ? par.mfx.FrameInfo.CropW : par.mfx.FrameInfo.Width;
-        mfxU16 crH = par.mfx.FrameInfo.CropH ? par.mfx.FrameInfo.CropH : par.mfx.FrameInfo.Height;
-        if (crW * crH >= 1920 * 1080) ctrl->LaScale = 2;
-        else if (crW * crH >= 1280 * 720) ctrl->LaScale = 1;
+#ifdef MFX_ENABLE_LPLA_BASE
+        ctrl->LaScale = GetLpLaDsRatio(par.mfx.FrameInfo);
+#endif
     }
-    else 
+    else if (isEnctoolLA)
     {
         mfxU16 crH = par.mfx.FrameInfo.CropH ? par.mfx.FrameInfo.CropH : par.mfx.FrameInfo.Height;
         mfxU16 crW = par.mfx.FrameInfo.CropW ? par.mfx.FrameInfo.CropW : par.mfx.FrameInfo.Width;
@@ -2589,7 +2612,9 @@ protected:
         if (pConfig)
             config = *pConfig;
 
-        if (extOpt3.ScenarioInfo != MFX_SCENARIO_GAME_STREAMING)
+        bool isHWLPLA = extOpt2.LookAheadDepth && !IsEncToolsConfigDefined(pConfig) && !IsOn(extOpt2.ExtBRC);
+        bool isEnctoolLA = extOpt2.LookAheadDepth && (IsEncToolsConfigDefined(pConfig) || IsOn(extOpt2.ExtBRC));
+        if (isEnctoolLA)
         {
             if (CheckSCConditions(video))
             {
@@ -2634,7 +2659,7 @@ protected:
         }
 
 #ifdef MFX_ENABLE_ENCTOOLS_LPLA
-        if (extOpt3.ScenarioInfo == MFX_SCENARIO_GAME_STREAMING)
+        if (isHWLPLA)
         {
             bool bLA = (extOpt2.LookAheadDepth > 0 &&
                 (video.mfx.RateControlMethod == MFX_RATECONTROL_CBR ||

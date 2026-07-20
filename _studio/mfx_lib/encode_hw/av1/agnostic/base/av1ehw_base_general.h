@@ -223,7 +223,7 @@ namespace Base
             , const FH& pps
             , FH & s) const;
 
-        TTaskIt ReorderWrap(const ExtBuffer::Param<mfxVideoParam> & par, TTaskIt begin, TTaskIt end, bool flush);
+        TTaskIt ReorderWrap(const ExtBuffer::Param<mfxVideoParam> & par, SH& sh, TTaskIt begin, TTaskIt end, bool flush, TTaskIt stopIt);
         static mfxU32 GetRawBytes(const Defaults::Param& par);
         static bool IsInVideoMem(const mfxVideoParam& par);
 

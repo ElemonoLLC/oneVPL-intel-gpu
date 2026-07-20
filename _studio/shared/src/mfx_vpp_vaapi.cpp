@@ -25,6 +25,7 @@
 #include <math.h>
 #include "mfx_vpp_defs.h"
 #include "mfx_vpp_vaapi.h"
+#include "mfx_platform_caps.h"
 #include "mfx_utils.h"
 #include "libmfx_core_vaapi.h"
 #include "ippcore.h"
@@ -52,6 +53,9 @@ enum QueryStatus
     VPREP_GPU_NOT_REACHED   =   2,
     VPREP_GPU_FAILED        =   3
 };
+
+// Private contract: processing_mode=3 requests high-quality processing; not in upstream libva.
+#define VA_PROC_MODE_HIGH_QUALITY 3
 
 //////////////////////////////////////////////////////////////////////////
 using namespace MfxHwVideoProcessing;
@@ -572,6 +576,12 @@ mfxStatus VAAPIVideoProcessing::QueryCapabilities(mfxVppCaps& caps)
     {
         caps.uChromaSiting = 1;
         caps.uVideoSignalInfoInOut = 1;
+        if (VppCaps::IsSuperResolutionSupported(m_core->GetHWType()))
+        {
+            caps.uSuperResolution = 1;
+            caps.uSrMaxInWidth  = VppCaps::SR_MAX_IN_WIDTH;
+            caps.uSrMaxInHeight = VppCaps::SR_MAX_IN_HEIGHT;
+        }
     }
 
     return MFX_ERR_NONE;
@@ -1795,6 +1805,15 @@ mfxStatus VAAPIVideoProcessing::Execute(mfxExecuteParams *pParams)
         break;
     }
     MFX_CHECK_STS(mfxSts);
+
+    if (pParams->srSetParams.Enabled &&
+        pParams->srSetParams.Mode != MFX_AI_SUPER_RESOLUTION_MODE_DISABLED)
+    {
+        m_pipelineParam[0].processing_mode = static_cast<VAProcMode>(VA_PROC_MODE_HIGH_QUALITY);
+        // VAAPI has no hardware readback for SR params; mirror srSetParams so that
+        // GetVideoParam reflects the active SR mode (cf. D3D11 GetSuperResolutionParam).
+        pParams->srGetParams = pParams->srSetParams;
+    }
 
         uint8_t& chromaSitingMode = m_pipelineParam[0].input_color_properties.chroma_sample_location;
         chromaSitingMode = VA_CHROMA_SITING_UNKNOWN;

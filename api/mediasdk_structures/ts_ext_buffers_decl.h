@@ -87,6 +87,10 @@ EXTBUF(mfxExtTuneEncodeQuality           , MFX_EXTBUFF_TUNE_ENCODE_QUALITY)
 EXTBUF(mfxExtAV1AuxData                  , MFX_EXTBUFF_AV1_AUXDATA)
 #endif
 
+#if defined(__MFXSTRUCTURES_H__)
+EXTBUF(mfxExtEncPreProcessing            , MFX_EXTBUFF_ENC_PREPROCESSING)
+#endif
+
 #if defined(__MFXCAMERA_H__)
 // Camera
 EXTBUF(mfxExtCamTotalColorControl        , MFX_EXTBUF_CAM_TOTAL_COLOR_CONTROL    )

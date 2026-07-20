@@ -2314,16 +2314,6 @@ mfxStatus MfxHwH264Encode::CheckVideoParamQueryLike(
                 par.mfx.RateControlMethod = 0;
             }
         }
-
-        if (par.mfx.RateControlMethod == MFX_RATECONTROL_CQP
-            && par.calcParam.cqpHrdMode == 0)
-        {
-            mfxU8 minQP = 10;
-            mfxU8 maxQP = 51;
-            if (!CheckRange(par.mfx.QPI, minQP, maxQP)) changed = true;
-            if (!CheckRange(par.mfx.QPP, minQP, maxQP)) changed = true;
-            if (!CheckRange(par.mfx.QPB, minQP, maxQP)) changed = true;
-        }
     }
 
     if (par.mfx.GopRefDist > 1 && hwCaps.ddi_caps.SliceIPOnly)
@@ -2499,34 +2489,40 @@ mfxStatus MfxHwH264Encode::CheckVideoParamQueryLike(
     }
     else if (extOpt2->LookAheadDepth > 0)
     {
-        if (!bRateControlLA(par.mfx.RateControlMethod))
+        if (bRateControlLA(par.mfx.RateControlMethod))
         {
-#if defined(MFX_ENABLE_ENCTOOLS_LPLA)
-            if (extOpt3->ScenarioInfo == MFX_SCENARIO_GAME_STREAMING)
+            if (extOpt2->LookAheadDepth < 2 * par.mfx.NumRefFrame)
             {
+                changed = true;
+                extOpt2->LookAheadDepth = 2 * par.mfx.NumRefFrame;
+            }
+            else if (par.mfx.GopRefDist > 0 && extOpt2->LookAheadDepth < 2 * par.mfx.GopRefDist)
+            {
+                changed = true;
+                extOpt2->LookAheadDepth = 2 * par.mfx.GopRefDist;
+            }
+        }
+        else
+        {
+            if (par.mfx.RateControlMethod == MFX_RATECONTROL_CBR || par.mfx.RateControlMethod == MFX_RATECONTROL_VBR || extOpt3->ScenarioInfo == MFX_SCENARIO_GAME_STREAMING)
+            {
+#if defined(MFX_ENABLE_ENCTOOLS_LPLA)//HWLPLA
                 if (!hwCaps.ddi_caps.LookaheadBRCSupport)
                     unsupported = true;
-            }
-            else
+                if (extOpt2 && extOpt2->LookAheadDepth > 0 && extOpt2->LookAheadDepth < 8)
+                {
+                    extOpt2->LookAheadDepth = 8;
+                    changed = true;
+                }
 #endif
+            }
 #if defined(MFX_ENABLE_ENCTOOLS)
-            if(!(H264EncTools::isEncToolNeeded(par)) && !IsOn(extOpt2->ExtBRC))
+            else if (!(H264EncTools::isEncToolNeeded(par)) && !IsOn(extOpt2->ExtBRC))
 #endif
             {
                 changed = true;
                 extOpt2->LookAheadDepth = 0;
             }
-        }
-        else if (par.mfx.GopRefDist > 0 && extOpt2->LookAheadDepth < 2 * par.mfx.GopRefDist)
-        {
-            changed = true;
-            extOpt2->LookAheadDepth = 2 * par.mfx.GopRefDist;
-        }
-
-        if(bRateControlLA(par.mfx.RateControlMethod) && extOpt2->LookAheadDepth < 2 * par.mfx.NumRefFrame)
-        {
-            changed = true;
-            extOpt2->LookAheadDepth =  2 * par.mfx.NumRefFrame;
         }
     }
 
@@ -2884,6 +2880,17 @@ mfxStatus MfxHwH264Encode::CheckVideoParamQueryLike(
 
         changed = true;
         par.mfx.FrameInfo.ChromaFormat = MFX_CHROMAFORMAT_YUV444;
+    }
+
+    if (par.mfx.RateControlMethod == MFX_RATECONTROL_CQP
+        && par.calcParam.cqpHrdMode == 0)
+    {
+        mfxU8 minQP = 10;
+        mfxU8 maxQP = 51;
+
+        if (!CheckRange(par.mfx.QPI, minQP, maxQP)) changed = true;
+        if (!CheckRange(par.mfx.QPP, minQP, maxQP)) changed = true;
+        if (!CheckRange(par.mfx.QPB, minQP, maxQP)) changed = true;
     }
 
     if (hwCaps.ddi_caps.Color420Only &&
@@ -6190,7 +6197,7 @@ void MfxHwH264Encode::SetDefaults(
 #if defined(MFX_ENABLE_ENCTOOLS_LPLA)
     // Closed GOP for GS/LPLA unless IdrInterval is set to max
     // Open GOP with arbitrary IdrInterval if GOP is strict (GopOptFlag == MFX_GOP_STRICT)
-    if (extOpt3->ScenarioInfo == MFX_SCENARIO_GAME_STREAMING && IsOn(par.mfx.LowPower) && extOpt2->LookAheadDepth > 0
+    if (IsOn(par.mfx.LowPower) && extOpt2->LookAheadDepth > 0
         && par.mfx.GopOptFlag == 0 && par.mfx.IdrInterval != USHRT_MAX)
     {
         par.mfx.GopOptFlag = MFX_GOP_CLOSED;
@@ -6219,9 +6226,7 @@ void MfxHwH264Encode::SetDefaults(
             //  - look-ahead
             //  - hw supports MBdata
             //  - VBR or CBR
-            const mfxExtCodingOption3* pCO3 = (mfxExtCodingOption3*)mfx::GetExtBuffer(par.ExtParam, par.NumExtParam, MFX_EXTBUFF_CODING_OPTION3);
-            bool bNonGS = !(pCO3 && pCO3->ScenarioInfo == MFX_SCENARIO_GAME_STREAMING);
-            if(IsEnctoolsLABRC(par) && hwCaps.ddi_caps.MbQpDataSupport && bNonGS)
+            if (IsEnctoolsLABRC(par) && hwCaps.ddi_caps.MbQpDataSupport)
                 extOpt2->MBBRC = MFX_CODINGOPTION_ON;
         }
     }
@@ -7152,9 +7157,9 @@ mfxStatus MfxHwH264Encode::CopyFrameDataBothFields(
 }
 
 #if defined(MFX_ENABLE_ENCTOOLS_LPLA)
-bool MfxHwH264Encode::IsLpLookaheadSupported(mfxU16 scenario, mfxU16 lookaheadDepth, mfxU16 rateContrlMethod)
+bool MfxHwH264Encode::IsLpLookaheadSupported(mfxU16 /*scenario*/, mfxU16 lookaheadDepth, mfxU16 rateContrlMethod)
 {
-    if (scenario == MFX_SCENARIO_GAME_STREAMING && lookaheadDepth > 0 &&
+    if (lookaheadDepth > 0 &&
         (rateContrlMethod == MFX_RATECONTROL_CBR || rateContrlMethod == MFX_RATECONTROL_VBR))
     {
         return true;

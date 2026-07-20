@@ -247,9 +247,9 @@ public:
     mfxI32 FindSurface(mfxFrameSurface1 *surf);
 
     // Adding new surface to cache
-    mfxStatus SetCurrentMFXSurface(mfxFrameSurface1 *surf);
+    virtual mfxStatus SetCurrentMFXSurface(mfxFrameSurface1 *surf);
 
-    mfxFrameSurface1 * GetSurface(UMC::FrameMemID index, mfxFrameSurface1 *surface, const mfxVideoParam * videoPar);
+    virtual mfxFrameSurface1 * GetSurface(UMC::FrameMemID index, mfxFrameSurface1 *surface, const mfxVideoParam * videoPar);
     mfxFrameSurface1 * GetInternalSurface(UMC::FrameMemID index);
 
     mfxStatus GetSurface(mfxFrameSurface1* & surf, mfxSurfaceHeader* import_surface);
@@ -259,6 +259,10 @@ public:
 
     mfxStatus PrepareToOutput(mfxFrameSurface1 *surface_work, UMC::FrameMemID index, const mfxVideoParam * videoPar, mfxU32 gpuCopyMode = MFX_COPY_USE_ANY);
 
+    bool CreateCorrespondence(mfxFrameSurface1& surface_work, mfxFrameSurface1& surface_out);
+
+    mfxFrameSurface1* GetCurrentWorkSurface() const { return m_current_work_surface; }
+
     bool HasFreeSurface();
 
     bool GetSurfaceType();
@@ -266,6 +270,7 @@ public:
     void SetFreeSurfaceAllowedFlag(bool flag);
 
 protected:
+
     VideoCORE*                                    m_core;
 
     // Decoder works with these surfaces
@@ -285,9 +290,8 @@ protected:
 
 private:
 
-    void CreateUMCAllocator(const mfxVideoParam & video_param, eMFXPlatform platform, bool needVppJPEG);
+    void CreateUMCAllocator(const mfxVideoParam & video_param, eMFXPlatform platform, bool needVpp);
 
-    bool CreateCorrespondence(mfxFrameSurface1& surface_work, mfxFrameSurface1& surface_out);
     void RemoveCorrespondence(mfxFrameSurface1& surface_work);
 
     void CreateBinding(const mfxFrameSurface1 & surf);

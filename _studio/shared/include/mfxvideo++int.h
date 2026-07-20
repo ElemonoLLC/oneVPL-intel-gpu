@@ -451,7 +451,7 @@ public:
     }
 
     virtual
-    mfxU16 GetMemType(mfxVideoParam par)
+    mfxU16 GetMemType(const mfxVideoParam& par)
     {
         return mfxU16(par.IOPattern == MFX_IOPATTERN_IN_SYSTEM_MEMORY ? MFX_MEMTYPE_FROM_ENCODE | MFX_MEMTYPE_SYSTEM_MEMORY : MFX_MEMTYPE_FROM_ENCODE | MFX_MEMTYPE_DXVA2_DECODER_TARGET);
     }
@@ -514,6 +514,9 @@ public:
 
     virtual mfxStatus         GetSurface(mfxFrameSurface1* & surface, mfxSurfaceHeader* /*import_surface*/) { surface = nullptr; return MFX_ERR_UNSUPPORTED; }
     virtual mfxFrameSurface1* GetInternalSurface(mfxFrameSurface1 * /*surface*/) { return nullptr; }
+
+    // Get bitstream buffer in video memory for decode
+    virtual mfxStatus GetBitstreamBuffer(mfxBitstream* queried_bsBuffer) { (void)queried_bsBuffer; return MFX_ERR_UNSUPPORTED; }
 
     mfxStatus ResetCache(mfxVideoParam*) { return MFX_ERR_NONE; }
 };

@@ -1,4 +1,4 @@
-// Copyright (c) 2004-2025 Intel Corporation
+// Copyright (c) 2004-2026 Intel Corporation
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -205,7 +205,7 @@ VideoDECODEH264::VideoDECODEH264(VideoCORE *core, mfxStatus * sts)
 
 VideoDECODEH264::~VideoDECODEH264(void)
 {
-    Close();
+    try { Close(); } catch (...) {}
 }
 
 mfxStatus VideoDECODEH264::Init(mfxVideoParam *par)
@@ -974,7 +974,10 @@ mfxStatus VideoDECODEH264::QueryIOSurfInternal(eMFXHWType type, mfxVideoParam *p
     if (par->mfx.MaxDecFrameBuffering && par->mfx.MaxDecFrameBuffering < dpbSize)
         dpbSize = par->mfx.MaxDecFrameBuffering;
 
-    mfxU32 numMin = dpbSize + 1 + asyncDepth;
+    // 1st AsyncDepth for async decoding operations,
+    // 2nd AsyncDepth ensures app can sync non-reference frames to free surfaces when all AsyncDepth
+    // pending syncpoints are reference frames that must remain in DPB/surface for continued submission
+    mfxU32 numMin = dpbSize + 2 * asyncDepth;
 
     if (useDelayedDisplay) // equals if (m_useDelayedDisplay) - workaround
         numMin += NUMBER_OF_ADDITIONAL_FRAMES;

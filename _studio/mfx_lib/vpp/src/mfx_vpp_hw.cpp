@@ -1252,11 +1252,6 @@ mfxStatus TaskManager::DoCpuFRC_AndUpdatePTS(
     mfxFrameSurface1 *output,
     mfxStatus *intSts)
 {
-    if (FRC_AI_INTERPOLATION & m_extMode)
-    {
-        return m_aiFrameInterpolator->UpdateTsAndGetStatus(input, output, intSts);
-    }
-    else
     {
         return m_cpuFrc.DoCpuFRC_AndUpdatePTS(input, output, intSts);
     }
@@ -2239,13 +2234,13 @@ mfxStatus VideoVPPHW::QueryImplsDescription(VideoCORE* core, mfxVPPDescription& 
 
         auto& memCaps = arrayHolder.PushBack(filter.MemDesc);
         memCaps.MemHandleType = MFX_RESOURCE_SYSTEM_SURFACE;
-        memCaps.Width = {vppCaps.uMinWidth, vppCaps.uMaxWidth, 1};
-        memCaps.Height = {vppCaps.uMinHeight, vppCaps.uMaxHeight, 1};
+        memCaps.Width = {vppCaps.uMinWidth, vppCaps.uMaxWidth, 8};
+        memCaps.Height = {vppCaps.uMinHeight, vppCaps.uMaxHeight, 8};
 
         for (auto fourcc : g_TABLE_SUPPORTED_FOURCC)
         {
             mfxU32 inputFormat = 0;
-            CheckFormatLimitation(filterId, fourcc, inputFormat);
+            CheckFormatLimitation(filterId, fourcc, inputFormat, core->GetHWType());
             if (inputFormat & MFX_FORMAT_SUPPORT_INPUT)
             {
                 auto& formatIn = arrayHolder.PushBack(memCaps.Formats);
@@ -2254,7 +2249,7 @@ mfxStatus VideoVPPHW::QueryImplsDescription(VideoCORE* core, mfxVPPDescription& 
                 for (auto fourccOut : g_TABLE_SUPPORTED_FOURCC)
                 {
                     mfxU32 outputFormat = 0;
-                    CheckFormatLimitation(filterId, fourccOut, outputFormat);
+                    CheckFormatLimitation(filterId, fourccOut, outputFormat, core->GetHWType());
                     if (outputFormat & MFX_FORMAT_SUPPORT_OUTPUT)
                     {
                         arrayHolder.PushBack(formatIn.OutFormats) = fourccOut;
@@ -2296,7 +2291,7 @@ mfxStatus VideoVPPHW::QueryImplsDescription(VideoCORE* core, mfxVPPDescription& 
     return MFX_ERR_NONE;
 }
 
-mfxStatus VideoVPPHW::CheckFormatLimitation(mfxU32 filter, mfxU32 format, mfxU32& formatSupport)
+mfxStatus VideoVPPHW::CheckFormatLimitation(mfxU32 filter, mfxU32 format, mfxU32& formatSupport, eMFXHWType platform)
 {
     switch(filter)
     {
@@ -2328,6 +2323,13 @@ mfxStatus VideoVPPHW::CheckFormatLimitation(mfxU32 filter, mfxU32 format, mfxU32
                 format == MFX_FOURCC_BGRP)
             {
                 formatSupport = MFX_FORMAT_SUPPORT_OUTPUT;
+            }
+
+            if (filter == MFX_EXTBUFF_VPP_3DLUT
+                && (format == MFX_FOURCC_ABGR16F || format == MFX_FOURCC_ARGB16F)
+                && VppCaps::Is3DLutABGR16FSupported(platform))
+            {
+                formatSupport = MFX_FORMAT_SUPPORT_INPUT | MFX_FORMAT_SUPPORT_OUTPUT;
             }
             break;
         case MFX_EXTBUFF_VPP_PROCAMP:
@@ -2745,15 +2747,6 @@ mfxStatus  VideoVPPHW::Init(
                 m_executeParams.srSetParams.Algorithm = extSR->SRAlgorithm;
             }
         }
-        else if (m_params.ExtParam[i]->BufferId == MFX_EXTBUFF_VPP_AI_FRAME_INTERPOLATION)
-        {
-            mfxExtVPPAIFrameInterpolation* extFrc = (mfxExtVPPAIFrameInterpolation*)m_params.ExtParam[i];
-            if (extFrc)
-            {
-                m_executeParams.bAiVfi = true;
-                m_executeParams.m_aiFiMode = extFrc->FIMode;
-            }
-        }
     }
 
     m_config.m_IOPattern = 0;
@@ -2919,13 +2912,6 @@ mfxStatus  VideoVPPHW::Init(
     }
 #endif
 
-    if (m_executeParams.bAiVfi)
-    {
-        m_aiVfiFilter = std::make_shared<MFXVideoFrameInterpolation>();
-        sts = m_aiVfiFilter->Init(m_pCore, par->vpp.In, par->vpp.Out, m_IOPattern, m_executeParams.m_outVideoSignalInfo);
-        MFX_CHECK_STS(sts);
-        m_taskMngr.SetAiFi(m_aiVfiFilter);
-    }
 
     return (bIsFilterSkipped) ? MFX_WRN_FILTER_SKIPPED : MFX_ERR_NONE;
 
@@ -3966,8 +3952,6 @@ mfxStatus VideoVPPHW::PostWorkOutSurface(ExtSurface & output)
             && !m_PercEncFilter
 #endif
             ;
-        if (m_executeParams.bAiVfi && m_aiVfiFilter)
-            copy = false;
         if (copy)
         {
              // the reason for this is as follows:
@@ -5024,17 +5008,6 @@ mfxStatus VideoVPPHW::QueryTaskRoutine(void *pState, void *pParam, mfxU32 thread
     }
 #endif
 
-    if (pHwVpp->m_executeParams.bAiVfi && pHwVpp->m_aiVfiFilter)
-    {
-        if (SYS_TO_SYS == pHwVpp->m_ioMode || D3D_TO_SYS == pHwVpp->m_ioMode)
-        {
-            pHwVpp->m_aiVfiFilter->ReturnSurface(pTask->output.pSurf, pHwVpp->m_internalVidSurf[VPP_OUT].mids[pTask->output.resIdx]);
-        }
-        else
-        {
-            pHwVpp->m_aiVfiFilter->ReturnSurface(pTask->output.pSurf, 0);
-        }
-    }
 
     // [4] Complete task
     sts = pHwVpp->m_taskMngr.CompleteTask(pTask);
@@ -5234,6 +5207,19 @@ mfxStatus ValidateParams(mfxVideoParam *par, mfxVppCaps *caps, VideoCORE *core, 
                 extScaling->ScalingMode = MFX_SCALING_MODE_DEFAULT;
                 sts = GetWorstSts(sts, MFX_WRN_INCOMPATIBLE_VIDEO_PARAM);
             }
+            break;
+        }
+        case MFX_EXTBUFF_VPP_3DLUT:
+        {
+#ifdef ONEVPL_EXPERIMENTAL
+            mfxExtVPP3DLut *ext3DLUT = (mfxExtVPP3DLut*)data;
+            if (ext3DLUT->InterpolationMethod != MFX_3DLUT_INTERPOLATION_DEFAULT
+                && !caps->u3DLutTetrahedralInterpolation)
+            {
+                ext3DLUT->InterpolationMethod = MFX_3DLUT_INTERPOLATION_DEFAULT;
+                sts = GetWorstSts(sts, MFX_WRN_INCOMPATIBLE_VIDEO_PARAM);
+            }
+#endif
             break;
         }
         case MFX_EXTBUFF_VPP_MIRRORING:
@@ -5511,6 +5497,15 @@ mfxStatus ValidateParams(mfxVideoParam *par, mfxVppCaps *caps, VideoCORE *core, 
                     }
                 }
             }
+            break;
+        }
+        case MFX_EXTBUFF_VPP_AI_FRAME_INTERPOLATION:
+        {
+            if (!VppCaps::IsAIFrameInterpolationSupported(core->GetHWType()))
+            {
+                sts = GetWorstSts(sts, MFX_ERR_UNSUPPORTED);
+            }
+            
             break;
         }
         case MFX_EXTBUFF_ALLOCATION_HINTS:
@@ -6324,7 +6319,15 @@ mfxStatus ConfigureExecuteParams(
                                 executeParams.lut3DInfo.ChannelMapping        = ext3DLUT->ChannelMapping;
                                 executeParams.lut3DInfo.BufferType            = ext3DLUT->BufferType;
 #ifdef ONEVPL_EXPERIMENTAL
-                                executeParams.lut3DInfo.InterpolationMethod   = ext3DLUT->InterpolationMethod;
+                                if (ext3DLUT->InterpolationMethod != MFX_3DLUT_INTERPOLATION_DEFAULT
+                                    && !caps.u3DLutTetrahedralInterpolation)
+                                {
+                                    executeParams.lut3DInfo.InterpolationMethod = MFX_3DLUT_INTERPOLATION_DEFAULT;
+                                }
+                                else
+                                {
+                                    executeParams.lut3DInfo.InterpolationMethod = ext3DLUT->InterpolationMethod;
+                                }
 #endif
                                 if (ext3DLUT->BufferType == MFX_RESOURCE_VA_SURFACE || ext3DLUT->BufferType == MFX_RESOURCE_DX11_TEXTURE)
                                 {
@@ -6940,22 +6943,6 @@ mfxStatus ConfigureExecuteParams(
                     }
                 }
                 break;
-            case MFX_EXTBUFF_VPP_AI_FRAME_INTERPOLATION:
-            {
-                config.m_extConfig.mode = FRC_ENABLED | FRC_AI_INTERPOLATION;
-                config.m_extConfig.frcRational[VPP_IN].FrameRateExtN = videoParam.vpp.In.FrameRateExtN;
-                config.m_extConfig.frcRational[VPP_IN].FrameRateExtD = videoParam.vpp.In.FrameRateExtD;
-                config.m_extConfig.frcRational[VPP_OUT].FrameRateExtN = videoParam.vpp.Out.FrameRateExtN;
-                config.m_extConfig.frcRational[VPP_OUT].FrameRateExtD = videoParam.vpp.Out.FrameRateExtD;
-
-                inDNRatio = (mfxF64)videoParam.vpp.In.FrameRateExtD / videoParam.vpp.In.FrameRateExtN;
-                outDNRatio = (mfxF64)videoParam.vpp.Out.FrameRateExtD / videoParam.vpp.Out.FrameRateExtN;
-
-                mfxExtVPPAIFrameInterpolation* extFrc = (mfxExtVPPAIFrameInterpolation*)videoParam.ExtParam[0];
-                executeParams.bAiVfi = true;
-                executeParams.m_aiFiMode = extFrc->FIMode;
-                break;
-            }
 #ifdef MFX_ENABLE_MCTF
             case MFX_EXTBUFF_VPP_MCTF:
             {

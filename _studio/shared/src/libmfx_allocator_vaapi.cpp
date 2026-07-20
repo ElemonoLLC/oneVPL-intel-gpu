@@ -385,7 +385,7 @@ mfxDefaultAllocatorVAAPI::AllocFramesHW(
         {
             int aligned_width  = mfx::align2_value(request->Info.Width,  32);
             int aligned_height = mfx::align2_value(request->Info.Height, 32);
-            codedbuf_size = static_cast<mfxU32>((aligned_width * aligned_height) * 400LL / (16 * 16));
+            codedbuf_size = static_cast<mfxU32>((static_cast<mfxU64>(aligned_width) * aligned_height) * 400LL / (16 * 16));
 
             codedbuf_num  = 1;
             codedbuf_type = VAEncCodedBufferType;
@@ -439,11 +439,16 @@ mfxDefaultAllocatorVAAPI::AllocFramesHW(
     else
     {
         // Some of vaCreateBuffer calls failed
+        mfxStatus cleanup_sts = MFX_ERR_NONE;
         for (VABufferID& coded_buf : allocated_surfaces)
         {
             mfxStatus sts = CheckAndDestroyVAbuffer(self->m_pVADisplay, coded_buf);
-            MFX_CHECK_STS(sts);
+            if ((MFX_ERR_NONE != sts) && (cleanup_sts == MFX_ERR_NONE))
+            {
+                cleanup_sts = sts; // Preserve the first failure encountered
+            }
         }
+        MFX_CHECK_STS(cleanup_sts);
     }
 
     return mfx_res;
@@ -821,7 +826,7 @@ vaapi_buffer_wrapper::vaapi_buffer_wrapper(const mfxFrameInfo &info, VADisplayWr
     {
         mfxI32 aligned_width  = mfx::align2_value(info.Width,  32);
         mfxI32 aligned_height = mfx::align2_value(info.Height, 32);
-        codedbuf_size = static_cast<mfxU32>((aligned_width * aligned_height) * 400LL / (16 * 16));
+        codedbuf_size = static_cast<mfxU32>((static_cast<mfxU64>(aligned_width) * aligned_height) * 400LL / (16 * 16));
 
         codedbuf_num  = 1;
         codedbuf_type = VAEncCodedBufferType;
@@ -846,7 +851,11 @@ vaapi_buffer_wrapper::vaapi_buffer_wrapper(const mfxFrameInfo &info, VADisplayWr
 
 vaapi_buffer_wrapper::~vaapi_buffer_wrapper()
 {
-    std::ignore = MFX_STS_TRACE(vaDestroyBuffer(*m_pVADisplay, m_resource_id));
+    try
+    {
+        std::ignore = MFX_STS_TRACE(vaDestroyBuffer(*m_pVADisplay, m_resource_id));
+    }
+    catch (...) {}
 }
 
 mfxStatus vaapi_buffer_wrapper::Lock(mfxFrameData& frame_data, mfxU32 flags)
@@ -1061,10 +1070,14 @@ mfxStatus vaapi_surface_wrapper::CopyImportSurfaceVAAPI(const mfxFrameInfo& info
 
 vaapi_surface_wrapper::~vaapi_surface_wrapper()
 {
-    if (!m_imported)
+    try
     {
-        std::ignore = MFX_STS_TRACE(vaDestroySurfaces(*m_pVADisplay, &m_resource_id, 1));
+        if (!m_imported)
+        {
+            std::ignore = MFX_STS_TRACE(vaDestroySurfaces(*m_pVADisplay, &m_resource_id, 1));
+        }
     }
+    catch (...) {}
 }
 
 mfxStatus vaapi_surface_wrapper::Lock(mfxFrameData& frame_data, mfxU32 flags)
@@ -1188,6 +1201,7 @@ std::pair<mfxHDL, mfxResourceType> mfxFrameSurface1_hw_vaapi::GetNativeHandle() 
 
 std::pair<mfxHDL, mfxHandleType> mfxFrameSurface1_hw_vaapi::GetDeviceHandle() const
 {
+    std::shared_lock<std::shared_timed_mutex> guard(m_hdl_mutex);
     return { reinterpret_cast<mfxHDL>((VADisplay)(m_resource_wrapper->GetDevice())), MFX_HANDLE_VA_DISPLAY };
 }
 
@@ -1298,16 +1312,20 @@ mfxSurfaceVAAPIImpl::mfxSurfaceVAAPIImpl(const mfxSurfaceHeader& export_header, 
 
 mfxSurfaceVAAPIImpl::~mfxSurfaceVAAPIImpl()
 {
-    if (mfxSurfaceInterface::Header.SurfaceFlags & MFX_SURFACE_FLAG_EXPORT_COPY)
+    try
     {
-        std::ignore = MFX_STS_TRACE(vaDestroySurfaces(*m_pVADisplay, &m_surface_id, 1));
+        if (mfxSurfaceInterface::Header.SurfaceFlags & MFX_SURFACE_FLAG_EXPORT_COPY)
+        {
+            std::ignore = MFX_STS_TRACE(vaDestroySurfaces(*m_pVADisplay, &m_surface_id, 1));
+        }
+        // In reality excessive check, with correct refmanagement original surface should be alive
+        else if (GetParentSurface())
+        {
+            // Release original surface, VASurfaceID can be destroyed now
+            GetParentSurface()->Release();
+        }
     }
-    // In reality excessive check, with correct refmanagement original surface should be alive
-    else if (GetParentSurface())
-    {
-        // Release original surface, VASurfaceID can be destroyed now
-        GetParentSurface()->Release();
-    }
+    catch (...) {}
 }
 
 /* EOF */
